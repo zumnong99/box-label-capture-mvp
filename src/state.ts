@@ -3,6 +3,7 @@ import {
   DEFAULT_CART_NO,
   EXPECTED_BOX_COUNT,
   LAYOUT_TYPE,
+  MAX_CART_COUNT,
   SESSION_SEQUENCE,
 } from './constants'
 import { getRelativeImagePath } from './filenames'
@@ -57,6 +58,14 @@ export function createCart(cartNo = DEFAULT_CART_NO): CartState {
   }
 }
 
+function getCartSequence(cartNo: string): number {
+  return Number.parseInt(cartNo, 10)
+}
+
+function formatCartNo(sequence: number): string {
+  return padNumber(sequence, 3)
+}
+
 export function createSession(now = new Date()): SessionState {
   const cart = createCart()
 
@@ -84,6 +93,10 @@ export function getCurrentBox(session: SessionState): BoxState {
 
 export function isCartComplete(cart: CartState): boolean {
   return cart.boxes.every((box) => box.status === 'captured')
+}
+
+export function canMoveToNextCart(session: SessionState): boolean {
+  return getCartSequence(getActiveCart(session).cartNo) < MAX_CART_COUNT
 }
 
 export function getNextUncapturedBoxNo(
@@ -140,6 +153,31 @@ export function moveToPreviousBox(session: SessionState): SessionState {
 export function moveToNextBox(session: SessionState): SessionState {
   const currentBoxNo = getActiveCart(session).currentBoxNo
   return moveToBox(session, Math.min(EXPECTED_BOX_COUNT, currentBoxNo + 1))
+}
+
+export function moveToNextCart(session: SessionState): SessionState {
+  const activeCart = getActiveCart(session)
+  const nextCartSequence = getCartSequence(activeCart.cartNo) + 1
+
+  if (nextCartSequence > MAX_CART_COUNT) {
+    return session
+  }
+
+  const nextCartNo = formatCartNo(nextCartSequence)
+  const existingCart = session.carts.find((cart) => cart.cartNo === nextCartNo)
+
+  if (existingCart) {
+    return {
+      ...session,
+      activeCartNo: existingCart.cartNo,
+    }
+  }
+
+  return {
+    ...session,
+    activeCartNo: nextCartNo,
+    carts: [...session.carts, createCart(nextCartNo)],
+  }
 }
 
 export function captureCurrentBox(

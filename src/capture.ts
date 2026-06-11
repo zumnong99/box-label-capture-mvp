@@ -16,8 +16,8 @@ export type CapturedImage = {
 }
 
 export const DEFAULT_CAPTURE_OPTIONS: CaptureOptions = {
-  maxLongEdge: 1800,
-  jpegQuality: 0.88,
+  maxLongEdge: 2400,
+  jpegQuality: 0.92,
 }
 
 export function resizeDimensions(

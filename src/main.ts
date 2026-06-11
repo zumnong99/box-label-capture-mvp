@@ -34,12 +34,12 @@ import {
   setPersistedPhotoRecord,
 } from './photo-store'
 import {
+  canMoveToNextCart,
   captureCurrentBox,
   createSession,
   getActiveCart,
   getCurrentBox,
-  isCartComplete,
-  moveToBox,
+  moveToNextCart,
   moveToNextBox,
   moveToPreviousBox,
   retakeCurrentBox,
@@ -299,36 +299,6 @@ function isBoxCapturedInState(cartNo: string, boxNo: number): boolean {
   const cart = session.carts.find((candidate) => candidate.cartNo === cartNo)
   const box = cart?.boxes.find((candidate) => candidate.boxNo === boxNo)
   return box?.status === 'captured'
-}
-
-function renderBoxGrid(): string {
-  const cart = getActiveCart(session)
-
-  return cart.boxes
-    .map((box) => {
-      const isCurrent = box.boxNo === cart.currentBoxNo
-      const isCaptured = box.status === 'captured'
-      const classes = [
-        'box-cell',
-        isCurrent ? 'is-current' : '',
-        isCaptured ? 'is-captured' : '',
-      ]
-        .filter(Boolean)
-        .join(' ')
-
-      return `
-        <button
-          class="${classes}"
-          type="button"
-          data-box-no="${box.boxNo}"
-          aria-label="${box.boxNo}번 박스로 이동"
-        >
-          <span class="box-number">${box.boxNo}</span>
-          <span class="box-marker">${isCaptured ? '✓' : isCurrent ? '현재' : ''}</span>
-        </button>
-      `
-    })
-    .join('')
 }
 
 function renderManifestPanel(): string {
@@ -851,9 +821,9 @@ function render(): void {
   const cart = getActiveCart(session)
   const currentBox = getCurrentBox(session)
   const capturedCount = cart.boxes.filter((box) => box.status === 'captured').length
-  const complete = isCartComplete(cart)
   const currentStatus = currentBox.status === 'captured' ? '촬영 완료' : '촬영 대기'
   const hasCameraStream = cameraStream !== null
+  const canAddNextCart = canMoveToNextCart(session)
 
   app.innerHTML = `
     <main class="app-shell">
@@ -862,9 +832,19 @@ function render(): void {
           <p class="eyebrow">박스 라벨 촬영 관리</p>
           <h1>카트 ${cart.cartNo}</h1>
         </div>
-        <button class="quiet-button" type="button" data-action="reset">
-          새 세션 시작
-        </button>
+        <div class="header-actions">
+          <button class="quiet-button" type="button" data-action="reset">
+            초기화
+          </button>
+          <button
+            class="quiet-button"
+            type="button"
+            data-action="next-cart"
+            ${canAddNextCart ? '' : 'disabled'}
+          >
+            다음 카트
+          </button>
+        </div>
       </header>
 
       <section class="status-strip" aria-label="세션 상태">
@@ -878,7 +858,7 @@ function render(): void {
         </div>
         <div>
           <span>박스 진행</span>
-          <strong>${currentBox.boxNo} / ${cart.expectedBoxCount}</strong>
+          <strong>${currentBox.boxNo} / ${cart.expectedBoxCount} · ${capturedCount}개 완료</strong>
         </div>
       </section>
 
@@ -895,26 +875,26 @@ function render(): void {
             카메라 미리보기
           </div>
           <div class="label-guide" aria-hidden="true"></div>
-          <div class="camera-capture-bar">
-            <button
-              class="primary-action"
-              type="button"
-              data-action="capture"
-              ${hasCameraStream ? '' : 'disabled'}
-            >
-              촬영
-            </button>
-            <button
-              type="button"
-              data-action="retake"
-              ${hasCameraStream ? '' : 'disabled'}
-            >
-              재촬영
-            </button>
-          </div>
         </div>
         <div class="camera-status ${cameraStatusTone}" role="status">
           ${cameraStatusMessage}
+        </div>
+        <div class="camera-capture-bar">
+          <button
+            class="primary-action"
+            type="button"
+            data-action="capture"
+            ${hasCameraStream ? '' : 'disabled'}
+          >
+            촬영
+          </button>
+          <button
+            type="button"
+            data-action="retake"
+            ${hasCameraStream ? '' : 'disabled'}
+          >
+            재촬영
+          </button>
         </div>
         <div class="camera-controls">
           <button
@@ -935,18 +915,10 @@ function render(): void {
         <p class="camera-instruction">라벨 전체가 정사각형 안에 들어오게 촬영</p>
       </section>
 
-      <section class="order-section" aria-label="촬영 순서">
-        <div class="section-heading">
-          <div>
-            <h2>촬영 순서</h2>
-            <p>${capturedCount}개 완료 · ${currentBox.boxNo}번 ${currentStatus}</p>
-          </div>
-          ${complete ? '<strong class="complete-badge">카트 완료</strong>' : ''}
-        </div>
-        <div class="box-grid">${renderBoxGrid()}</div>
-      </section>
-
       <section class="action-panel" aria-label="촬영 조작">
+        <div class="current-box-summary">
+          ${currentBox.boxNo}번 ${currentStatus}
+        </div>
         <button
           type="button"
           data-action="previous"
@@ -961,7 +933,6 @@ function render(): void {
         >
           다음 박스
         </button>
-        <button type="button" data-action="cart-complete">카트 완료</button>
         <button
           type="button"
           data-action="export"
@@ -1047,13 +1018,9 @@ function bindEvents(): void {
   })
 
   app
-    .querySelector('[data-action="cart-complete"]')
+    .querySelector('[data-action="next-cart"]')
     ?.addEventListener('click', () => {
-      window.alert(
-        isCartComplete(getActiveCart(session))
-          ? '카트 촬영이 완료되었습니다.'
-          : '아직 촬영하지 않은 박스가 있습니다.',
-      )
+      commitSession(moveToNextCart(session))
     })
 
   app.querySelector('[data-action="export"]')?.addEventListener('click', () => {
@@ -1107,13 +1074,6 @@ function bindEvents(): void {
 
   app.querySelector('[data-action="reset"]')?.addEventListener('click', () => {
     void resetSession()
-  })
-
-  app.querySelectorAll<HTMLButtonElement>('[data-box-no]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const boxNo = Number(button.dataset.boxNo)
-      commitSession(moveToBox(session, boxNo))
-    })
   })
 
   app
