@@ -10,8 +10,10 @@
 ## Step 2: camera getUserMedia
 
 - 카메라 권한 요청을 명시적인 사용자 버튼 뒤에 연결합니다.
-- iPhone Safari HTTPS 환경에서 동작을 확인합니다.
+- 후면 카메라를 우선 요청하고 실패 시 기본 카메라로 재시도합니다.
+- `playsinline` video 미리보기와 stream 중지 처리를 구현합니다.
 - 실패 시 사용자가 이해할 수 있는 한국어 오류 메시지를 표시합니다.
+- iPhone Safari HTTPS 환경에서 동작을 확인합니다.
 
 ## Step 3: canvas capture and image resize
 

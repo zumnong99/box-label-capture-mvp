@@ -1,4 +1,5 @@
 import './style.css'
+import { startCameraPreview, stopCameraPreview } from './camera'
 import {
   captureCurrentBox,
   createSession,
@@ -15,6 +16,7 @@ import { clearStoredSession, loadSession, saveSession } from './storage'
 import type { SessionState } from './types'
 
 type ManifestPreviewMode = 'json' | 'csv'
+type CameraStatusTone = 'idle' | 'loading' | 'running' | 'error'
 
 const appElement = document.querySelector<HTMLDivElement>('#app')
 
@@ -27,6 +29,10 @@ const app = appElement
 let session: SessionState = loadSession()
 let manifestVisible = false
 let manifestMode: ManifestPreviewMode = 'json'
+let cameraStream: MediaStream | null = null
+let cameraStatusMessage = '카메라 대기 중'
+let cameraStatusTone: CameraStatusTone = 'idle'
+let cameraIsStarting = false
 
 function escapeHtml(value: string): string {
   return value
@@ -114,12 +120,48 @@ function renderManifestPanel(): string {
   `
 }
 
+function syncCameraVideo(): void {
+  const videoElement =
+    app.querySelector<HTMLVideoElement>('[data-camera-preview]')
+
+  if (!videoElement) {
+    return
+  }
+
+  videoElement.autoplay = true
+  videoElement.muted = true
+  videoElement.playsInline = true
+
+  if (cameraStream && videoElement.srcObject !== cameraStream) {
+    videoElement.srcObject = cameraStream
+    videoElement.play().catch((error: unknown) => {
+      console.error('Camera preview playback failed', error)
+    })
+  }
+}
+
+function stopActiveCamera(
+  message = '카메라 대기 중',
+  shouldRender = true,
+): void {
+  stopCameraPreview(cameraStream)
+  cameraStream = null
+  cameraIsStarting = false
+  cameraStatusMessage = message
+  cameraStatusTone = 'idle'
+
+  if (shouldRender) {
+    render()
+  }
+}
+
 function render(): void {
   const cart = getActiveCart(session)
   const currentBox = getCurrentBox(session)
   const capturedCount = cart.boxes.filter((box) => box.status === 'captured').length
   const complete = isCartComplete(cart)
   const currentStatus = currentBox.status === 'captured' ? '촬영 완료' : '촬영 대기'
+  const hasCameraStream = cameraStream !== null
 
   app.innerHTML = `
     <main class="app-shell">
@@ -149,11 +191,39 @@ function render(): void {
       </section>
 
       <section class="camera-panel" aria-label="카메라 미리보기">
-        <div class="camera-placeholder">
-          <span>카메라 미리보기</span>
+        <div class="camera-preview-frame">
+          <video
+            class="camera-preview"
+            data-camera-preview
+            playsinline
+            autoplay
+            muted
+          ></video>
+          <div class="camera-empty ${hasCameraStream ? 'is-hidden' : ''}">
+            카메라 미리보기
+          </div>
           <div class="label-guide" aria-hidden="true"></div>
         </div>
-        <p>라벨 전체가 정사각형 안에 들어오게 촬영</p>
+        <div class="camera-status ${cameraStatusTone}" role="status">
+          ${cameraStatusMessage}
+        </div>
+        <div class="camera-controls">
+          <button
+            type="button"
+            data-action="camera-start"
+            ${hasCameraStream || cameraIsStarting ? 'disabled' : ''}
+          >
+            카메라 시작
+          </button>
+          <button
+            type="button"
+            data-action="camera-stop"
+            ${hasCameraStream ? '' : 'disabled'}
+          >
+            카메라 중지
+          </button>
+        </div>
+        <p class="camera-instruction">라벨 전체가 정사각형 안에 들어오게 촬영</p>
       </section>
 
       <section class="order-section" aria-label="촬영 순서">
@@ -193,9 +263,56 @@ function render(): void {
   `
 
   bindEvents()
+  syncCameraVideo()
 }
 
 function bindEvents(): void {
+  app
+    .querySelector('[data-action="camera-start"]')
+    ?.addEventListener('click', async () => {
+      const videoElement =
+        app.querySelector<HTMLVideoElement>('[data-camera-preview]')
+
+      if (!videoElement || cameraIsStarting || cameraStream) {
+        return
+      }
+
+      cameraIsStarting = true
+      cameraStatusMessage = '카메라 권한 요청 중'
+      cameraStatusTone = 'loading'
+      render()
+
+      const activeVideoElement =
+        app.querySelector<HTMLVideoElement>('[data-camera-preview]')
+
+      if (!activeVideoElement) {
+        cameraIsStarting = false
+        cameraStatusMessage = '카메라 화면을 준비할 수 없습니다'
+        cameraStatusTone = 'error'
+        render()
+        return
+      }
+
+      const result = await startCameraPreview(activeVideoElement)
+      cameraIsStarting = false
+
+      if (result.ok) {
+        cameraStream = result.stream
+        cameraStatusMessage = result.message
+        cameraStatusTone = 'running'
+      } else {
+        cameraStream = null
+        cameraStatusMessage = result.message
+        cameraStatusTone = 'error'
+      }
+
+      render()
+    })
+
+  app.querySelector('[data-action="camera-stop"]')?.addEventListener('click', () => {
+    stopActiveCamera()
+  })
+
   app.querySelector('[data-action="capture"]')?.addEventListener('click', () => {
     const currentBox = getCurrentBox(session)
 
@@ -273,3 +390,13 @@ function bindEvents(): void {
 
 saveSession(session)
 render()
+
+window.addEventListener('beforeunload', () => {
+  stopActiveCamera('카메라 대기 중', false)
+})
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && cameraStream) {
+    stopActiveCamera('카메라 대기 중')
+  }
+})

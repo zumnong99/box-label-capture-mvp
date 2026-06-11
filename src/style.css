@@ -135,24 +135,42 @@ p {
   color: #ffffff;
 }
 
-.camera-placeholder {
+.camera-preview-frame {
   position: relative;
   min-height: 330px;
-  display: grid;
-  place-items: center;
   background:
     linear-gradient(135deg, rgba(37, 99, 235, 0.25), transparent 45%),
     linear-gradient(45deg, rgba(15, 118, 110, 0.24), transparent 50%),
     #111827;
 }
 
-.camera-placeholder span {
+.camera-preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  background: #111827;
+}
+
+.camera-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
   color: rgba(255, 255, 255, 0.72);
   font-weight: 900;
 }
 
+.camera-empty.is-hidden {
+  display: none;
+}
+
 .label-guide {
   position: absolute;
+  top: 50%;
+  left: 50%;
   width: min(70%, 240px);
   aspect-ratio: 1;
   border: 3px solid #facc15;
@@ -160,9 +178,57 @@ p {
   box-shadow:
     0 0 0 999px rgba(15, 23, 42, 0.36),
     0 0 28px rgba(250, 204, 21, 0.35);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
 
-.camera-panel p {
+.camera-status {
+  padding: 12px 14px;
+  color: #e2e8f0;
+  font-size: 15px;
+  font-weight: 900;
+  text-align: center;
+  background: #1e293b;
+}
+
+.camera-status.loading {
+  color: #fef3c7;
+}
+
+.camera-status.running {
+  color: #bbf7d0;
+}
+
+.camera-status.error {
+  color: #fecaca;
+}
+
+.camera-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+  background: #0f172a;
+}
+
+.camera-controls button {
+  min-height: 52px;
+  border-color: #334155;
+  color: #f8fafc;
+  background: #1e293b;
+}
+
+.camera-controls button:first-child {
+  border-color: #0f766e;
+  background: #0f766e;
+}
+
+.camera-controls button:disabled {
+  color: #94a3b8;
+  background: #334155;
+}
+
+.camera-instruction {
   padding: 14px;
   color: #f8fafc;
   font-size: 16px;
@@ -317,7 +383,7 @@ p {
 }
 
 @media (min-width: 430px) {
-  .camera-placeholder {
+  .camera-preview-frame {
     min-height: 380px;
   }
 }
