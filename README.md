@@ -72,6 +72,16 @@ https://<github-user>.github.io/box-label-capture-mvp/
 
 GitHub Pages는 앱 코드만 호스팅합니다. 촬영한 사진은 GitHub로 업로드되지 않고, 브라우저 IndexedDB에 남아 있다가 사용자가 ZIP으로 내보내거나 공유할 때만 이동합니다. GitHub Pages 정적 앱은 PC의 repo 폴더나 OCR 입력 폴더에 직접 저장할 수 없습니다.
 
+## iPhone Safari 테스트
+
+- 배포된 HTTPS GitHub Pages URL을 iPhone Safari에서 직접 엽니다.
+- KakaoTalk, LINE 등 인앱 브라우저에서는 먼저 테스트하지 않습니다.
+- `카메라 시작` → 촬영 → 새로고침 복원 → ZIP 내보내기 순서로 확인합니다.
+- `진단 정보` 패널에서 HTTPS, 카메라, IndexedDB, 공유 지원 상태를 확인합니다.
+- 촬영한 사진은 GitHub로 업로드되지 않습니다.
+- ZIP은 다운로드 또는 공유 후 PC로 수동 이동해야 합니다.
+- 상세 체크리스트는 `docs/IPHONE_SAFARI_TEST_CHECKLIST.md`를 따릅니다.
+
 ## iPhone Safari 메모
 
 iPhone Safari의 `getUserMedia`는 HTTPS 환경이 필요합니다. 개발 PC의 `localhost` / `127.0.0.1`에서는 로컬 테스트가 가능할 수 있지만, iPhone 실기기 테스트에는 HTTPS 배포 URL 또는 별도로 구성한 로컬 HTTPS/LAN 환경이 필요합니다.

@@ -240,11 +240,54 @@ p {
 .order-section,
 .action-panel,
 .photo-section,
-.manifest-panel {
+.manifest-panel,
+.diagnostics-panel {
   padding: 12px;
   border: 1px solid #d8dee8;
   border-radius: 8px;
   background: #ffffff;
+}
+
+.diagnostics-panel summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.diagnostics-panel dl {
+  margin: 6px 0 0;
+  display: grid;
+  gap: 8px;
+}
+
+.diagnostics-panel div {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.diagnostics-panel div:last-child {
+  border-bottom: 0;
+}
+
+.diagnostics-panel dt {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.diagnostics-panel dd {
+  margin: 0;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 800;
+  word-break: break-word;
 }
 
 .section-heading {

@@ -1,5 +1,10 @@
 import './style.css'
-import { startCameraPreview, stopCameraPreview } from './camera'
+import {
+  isCameraSupported,
+  isSecureContextForCamera,
+  startCameraPreview,
+  stopCameraPreview,
+} from './camera'
 import { captureVideoFrame } from './capture'
 import {
   buildSessionZip,
@@ -48,6 +53,7 @@ type ManifestPreviewMode = 'json' | 'csv'
 type StatusTone = 'idle' | 'loading' | 'running' | 'warning' | 'error'
 
 const appElement = document.querySelector<HTMLDivElement>('#app')
+const APP_BUILD_LABEL = 'box-label-capture-mvp 0.0.0'
 
 if (!appElement) {
   throw new Error('앱 루트 요소를 찾을 수 없습니다.')
@@ -71,6 +77,8 @@ let photoStorageStatusTone: StatusTone = isIndexedDbSupported()
   ? 'loading'
   : 'warning'
 let photoStorageEstimateMessage = ''
+let photoStorageEstimate: { usage?: number; quota?: number } = {}
+let diagnosticsPhotoCount: number | null = null
 let photoRestoreCompleted = false
 let exportSummary: ExportSummary | null = null
 let exportResult: ExportResult | null = null
@@ -138,6 +146,117 @@ function formatStorageEstimate(usage?: number, quota?: number): string {
   }
 
   return `저장소 사용량 약 ${formatFileSize(usage)} / ${formatFileSize(quota)}`
+}
+
+function formatYesNo(value: boolean): string {
+  return value ? '예' : '아니오'
+}
+
+function formatDiagnosticValue(value: string | number | null): string {
+  if (value === null || value === '') {
+    return '확인 불가'
+  }
+
+  return String(value)
+}
+
+function isDownloadLinkSupported(): boolean {
+  return 'download' in document.createElement('a')
+}
+
+function isWebShareSupported(): boolean {
+  return typeof navigator.share === 'function'
+}
+
+function isFileShareSupported(): boolean {
+  try {
+    return canShareFiles(
+      new File(['diagnostic'], 'diagnostic.txt', {
+        type: 'text/plain',
+      }),
+    )
+  } catch {
+    return false
+  }
+}
+
+function renderDiagnosticsPanel(): string {
+  const cart = getActiveCart(session)
+  const currentBox = getCurrentBox(session)
+  const storageEstimateText = formatStorageEstimate(
+    photoStorageEstimate.usage,
+    photoStorageEstimate.quota,
+  )
+  const indexedPhotoCount =
+    diagnosticsPhotoCount === null ? null : `${diagnosticsPhotoCount}개`
+
+  return `
+    <details class="diagnostics-panel">
+      <summary>진단 정보</summary>
+      <dl>
+        <div>
+          <dt>앱 빌드</dt>
+          <dd>${APP_BUILD_LABEL}</dd>
+        </div>
+        <div>
+          <dt>세션</dt>
+          <dd>${escapeHtml(session.sessionId)}</dd>
+        </div>
+        <div>
+          <dt>현재 위치</dt>
+          <dd>카트 ${escapeHtml(cart.cartNo)} · 박스 ${currentBox.boxNo}</dd>
+        </div>
+        <div>
+          <dt>보안 컨텍스트</dt>
+          <dd>${formatYesNo(window.isSecureContext)}</dd>
+        </div>
+        <div>
+          <dt>카메라 실행 가능</dt>
+          <dd>${formatYesNo(isSecureContextForCamera() && isCameraSupported())}</dd>
+        </div>
+        <div>
+          <dt>카메라 API</dt>
+          <dd>${formatYesNo(isCameraSupported())}</dd>
+        </div>
+        <div>
+          <dt>IndexedDB</dt>
+          <dd>${formatYesNo(isIndexedDbSupported())}</dd>
+        </div>
+        <div>
+          <dt>저장소 사용량</dt>
+          <dd>${escapeHtml(formatDiagnosticValue(storageEstimateText))}</dd>
+        </div>
+        <div>
+          <dt>세션 사진</dt>
+          <dd>${escapeHtml(formatDiagnosticValue(indexedPhotoCount))}</dd>
+        </div>
+        <div>
+          <dt>다운로드 링크</dt>
+          <dd>${formatYesNo(isDownloadLinkSupported())}</dd>
+        </div>
+        <div>
+          <dt>Web Share API</dt>
+          <dd>${formatYesNo(isWebShareSupported())}</dd>
+        </div>
+        <div>
+          <dt>파일 공유</dt>
+          <dd>${formatYesNo(isFileShareSupported())}</dd>
+        </div>
+        <div>
+          <dt>현재 URL</dt>
+          <dd>${escapeHtml(window.location.href)}</dd>
+        </div>
+        <div>
+          <dt>현재 pathname</dt>
+          <dd>${escapeHtml(window.location.pathname)}</dd>
+        </div>
+        <div>
+          <dt>Vite base</dt>
+          <dd>${escapeHtml(import.meta.env.BASE_URL)}</dd>
+        </div>
+      </dl>
+    </details>
+  `
 }
 
 function getLargeExportWarning(summary: ExportSummary): string {
@@ -545,6 +664,10 @@ async function captureForCurrentBox(mode: 'capture' | 'retake'): Promise<void> {
         : captureCurrentBox(session, image.capturedAt, metadata)
 
     commitSession(nextSession)
+
+    if (persisted) {
+      void refreshDiagnosticsPhotoCount()
+    }
   } catch (error) {
     console.error('Image capture failed', error)
     captureStatusMessage = getCaptureErrorMessage(error)
@@ -556,6 +679,7 @@ async function captureForCurrentBox(mode: 'capture' | 'retake'): Promise<void> {
 async function refreshStorageEstimate(): Promise<void> {
   try {
     const estimate = await getStorageEstimate()
+    photoStorageEstimate = estimate
     photoStorageEstimateMessage = formatStorageEstimate(
       estimate.usage,
       estimate.quota,
@@ -566,8 +690,27 @@ async function refreshStorageEstimate(): Promise<void> {
   }
 }
 
+async function refreshDiagnosticsPhotoCount(): Promise<void> {
+  if (!isIndexedDbSupported()) {
+    diagnosticsPhotoCount = null
+    render()
+    return
+  }
+
+  try {
+    const records = await getPhotosForSession(session.sessionId)
+    diagnosticsPhotoCount = records.length
+    render()
+  } catch (error) {
+    console.error('Diagnostics photo count failed', error)
+    diagnosticsPhotoCount = null
+    render()
+  }
+}
+
 async function restorePersistedPhotosForSession(): Promise<void> {
   if (!isIndexedDbSupported()) {
+    diagnosticsPhotoCount = null
     photoRestoreCompleted = true
     render()
     return
@@ -587,6 +730,7 @@ async function restorePersistedPhotosForSession(): Promise<void> {
       }
     })
 
+    diagnosticsPhotoCount = records.length
     photoRestoreCompleted = true
     photoStorageStatusMessage =
       records.length > 0
@@ -597,6 +741,7 @@ async function restorePersistedPhotosForSession(): Promise<void> {
     render()
   } catch (error) {
     console.error('Photo restore failed', error)
+    diagnosticsPhotoCount = null
     photoRestoreCompleted = true
     photoStorageStatusMessage = '저장된 사진을 불러오지 못했습니다'
     photoStorageStatusTone = 'error'
@@ -636,6 +781,7 @@ async function resetSession(): Promise<void> {
   exportStatusMessage = ''
   exportStatusTone = 'idle'
   photoRestoreCompleted = true
+  diagnosticsPhotoCount = 0
   commitSession(createSession())
   void refreshStorageEstimate()
 }
@@ -807,6 +953,8 @@ function render(): void {
       ${renderPhotoPreview()}
 
       ${renderManifestPanel()}
+
+      ${renderDiagnosticsPanel()}
     </main>
   `
 
