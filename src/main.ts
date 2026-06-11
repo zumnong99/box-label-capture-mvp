@@ -581,14 +581,6 @@ async function captureForCurrentBox(mode: 'capture' | 'retake'): Promise<void> {
     return
   }
 
-  if (
-    mode === 'capture' &&
-    currentBox.status === 'captured' &&
-    !window.confirm('현재 박스는 이미 촬영되어 있습니다. 덮어쓸까요?')
-  ) {
-    return
-  }
-
   try {
     const image = await captureVideoFrame(videoElement)
     const key = getCapturedImageKey(session.sessionId, cart.cartNo, currentBox.boxNo)

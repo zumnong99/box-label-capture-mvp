@@ -245,14 +245,16 @@ export function captureCurrentBox(
       nextCart,
       cart.currentBoxNo,
     )
-
-    return withCompletion(
+    const nextCurrentBoxNo = nextUncapturedBoxNo ?? cart.currentBoxNo + 1
+    const cartWithNextBox = ensureBoxExists(
       {
         ...nextCart,
-        currentBoxNo: nextUncapturedBoxNo ?? cart.currentBoxNo,
+        currentBoxNo: nextCurrentBoxNo,
       },
-      capturedAt,
+      nextCurrentBoxNo,
     )
+
+    return withCompletion(cartWithNextBox, capturedAt)
   })
 }
 
