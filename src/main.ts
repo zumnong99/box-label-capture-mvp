@@ -855,7 +855,7 @@ function render(): void {
         </div>
         <div>
           <span>박스 진행</span>
-          <strong>${currentBox.boxNo} / ${cart.expectedBoxCount} · ${capturedCount}개 완료</strong>
+          <strong>현재 ${currentBox.boxNo}번 · ${capturedCount}개 완료</strong>
         </div>
       </section>
 
@@ -926,7 +926,6 @@ function render(): void {
         <button
           type="button"
           data-action="next"
-          ${currentBox.boxNo === cart.expectedBoxCount ? 'disabled' : ''}
         >
           다음 박스
         </button>

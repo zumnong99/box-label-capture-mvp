@@ -1,7 +1,6 @@
 import {
-  BOX_ORDER,
   DEFAULT_CART_NO,
-  EXPECTED_BOX_COUNT,
+  INITIAL_BOX_COUNT,
   LAYOUT_TYPE,
   SESSION_SEQUENCE,
 } from './constants'
@@ -30,26 +29,36 @@ export function createBoxFilePath(cartNo: string, boxNo: number): string {
   return getRelativeImagePath(cartNo, boxNo)
 }
 
-export function createCart(cartNo = DEFAULT_CART_NO): CartState {
-  const boxes: BoxState[] = BOX_ORDER.map((box) => ({
-    boxNo: box.boxNo,
-    position: {
-      row: box.row,
-      col: box.col,
-    },
+function getBoxPosition(boxNo: number): { row: number; col: number } {
+  return {
+    row: Math.ceil(boxNo / 2),
+    col: boxNo % 2 === 1 ? 1 : 2,
+  }
+}
+
+function createBox(cartNo: string, boxNo: number): BoxState {
+  return {
+    boxNo,
+    position: getBoxPosition(boxNo),
     status: 'pending',
     retakeCount: 0,
     capturedAt: null,
-    filePath: createBoxFilePath(cartNo, box.boxNo),
+    filePath: createBoxFilePath(cartNo, boxNo),
     imageWidth: null,
     imageHeight: null,
     imageSizeBytes: null,
     mimeType: null,
-  }))
+  }
+}
+
+export function createCart(cartNo = DEFAULT_CART_NO): CartState {
+  const boxes: BoxState[] = Array.from({ length: INITIAL_BOX_COUNT }, (_, index) =>
+    createBox(cartNo, index + 1),
+  )
 
   return {
     cartNo,
-    expectedBoxCount: EXPECTED_BOX_COUNT,
+    expectedBoxCount: boxes.length,
     layoutType: LAYOUT_TYPE,
     currentBoxNo: 1,
     boxes,
@@ -130,13 +139,42 @@ function withCompletion(cart: CartState, completedAt: string): CartState {
   }
 }
 
+function ensureBoxExists(cart: CartState, boxNo: number): CartState {
+  if (boxNo < 1 || cart.boxes.some((box) => box.boxNo === boxNo)) {
+    return cart
+  }
+
+  const maxBoxNo = Math.max(0, ...cart.boxes.map((box) => box.boxNo))
+  const boxesToAdd: BoxState[] = []
+
+  for (let nextBoxNo = maxBoxNo + 1; nextBoxNo <= boxNo; nextBoxNo += 1) {
+    boxesToAdd.push(createBox(cart.cartNo, nextBoxNo))
+  }
+
+  const boxes = [...cart.boxes, ...boxesToAdd]
+
+  return {
+    ...cart,
+    completedAt: null,
+    expectedBoxCount: boxes.length,
+    boxes,
+  }
+}
+
 export function moveToBox(
   session: SessionState,
   boxNo: number,
 ): SessionState {
   return updateActiveCart(session, (cart) => {
-    const exists = cart.boxes.some((box) => box.boxNo === boxNo)
-    return exists ? { ...cart, currentBoxNo: boxNo } : cart
+    if (boxNo < 1) {
+      return cart
+    }
+
+    const nextCart = ensureBoxExists(cart, boxNo)
+    return {
+      ...nextCart,
+      currentBoxNo: boxNo,
+    }
   })
 }
 
@@ -147,7 +185,7 @@ export function moveToPreviousBox(session: SessionState): SessionState {
 
 export function moveToNextBox(session: SessionState): SessionState {
   const currentBoxNo = getActiveCart(session).currentBoxNo
-  return moveToBox(session, Math.min(EXPECTED_BOX_COUNT, currentBoxNo + 1))
+  return moveToBox(session, currentBoxNo + 1)
 }
 
 export function moveToNextCart(session: SessionState): SessionState {
@@ -181,7 +219,8 @@ export function captureCurrentBox(
   },
 ): SessionState {
   return updateActiveCart(session, (cart) => {
-    const nextBoxes = cart.boxes.map((box) =>
+    const cartWithCurrentBox = ensureBoxExists(cart, cart.currentBoxNo)
+    const nextBoxes = cartWithCurrentBox.boxes.map((box) =>
       box.boxNo === cart.currentBoxNo
         ? {
             ...box,
@@ -197,7 +236,8 @@ export function captureCurrentBox(
     )
 
     const nextCart = {
-      ...cart,
+      ...cartWithCurrentBox,
+      expectedBoxCount: nextBoxes.length,
       boxes: nextBoxes,
     }
 
@@ -227,7 +267,8 @@ export function retakeCurrentBox(
   },
 ): SessionState {
   return updateActiveCart(session, (cart) => {
-    const nextBoxes = cart.boxes.map((box) =>
+    const cartWithCurrentBox = ensureBoxExists(cart, cart.currentBoxNo)
+    const nextBoxes = cartWithCurrentBox.boxes.map((box) =>
       box.boxNo === cart.currentBoxNo
         ? {
             ...box,
@@ -246,7 +287,8 @@ export function retakeCurrentBox(
 
     return withCompletion(
       {
-        ...cart,
+        ...cartWithCurrentBox,
+        expectedBoxCount: nextBoxes.length,
         boxes: nextBoxes,
       },
       capturedAt,

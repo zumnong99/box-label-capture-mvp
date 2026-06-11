@@ -73,7 +73,7 @@ export function buildExportSummary(
     sessionId: session.sessionId,
     totalCarts: session.carts.length,
     totalExpectedBoxes: session.carts.reduce(
-      (total, cart) => total + cart.expectedBoxCount,
+      (total, cart) => total + cart.boxes.length,
       0,
     ),
     totalCapturedBoxes: capturedBoxKeys.size,

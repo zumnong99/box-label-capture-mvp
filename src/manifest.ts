@@ -39,7 +39,7 @@ export function buildManifest(
     exported_at: exportedAt,
     carts: session.carts.map((cart) => ({
       cart_no: cart.cartNo,
-      expected_box_count: cart.expectedBoxCount,
+      expected_box_count: cart.boxes.length,
       layout_type: cart.layoutType,
       completed_at: cart.completedAt,
       boxes: cart.boxes.map((box) => ({
