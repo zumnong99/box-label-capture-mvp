@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "typecheck": "tsc --noEmit",
     "test": "npm run typecheck",
+    "check": "npm run typecheck && npm test && npm run build",
     "preview": "vite preview"
   },
   "devDependencies": {

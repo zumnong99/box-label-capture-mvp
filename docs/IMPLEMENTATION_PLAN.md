@@ -46,6 +46,8 @@
 
 ## Step 7: GitHub Pages deployment
 
-- Vite base path와 GitHub Actions 배포를 설정합니다.
-- HTTPS 배포 URL에서 카메라 기능을 다시 검증합니다.
-- README에 배포 절차와 운영 메모를 추가합니다.
+- Vite `base` path는 `/box-label-capture-mvp/`로 설정합니다.
+- GitHub Actions는 `npm ci`, `typecheck`, `test`, `build`를 실행한 뒤 `dist/`를 GitHub Pages artifact로 배포합니다.
+- GitHub Pages source는 `GitHub Actions`를 사용합니다.
+- HTTPS 배포 URL은 iPhone Safari 실기기 테스트 진입점으로 사용합니다.
+- README와 `docs/GITHUB_PAGES_DEPLOYMENT.md`에 배포 절차, 운영 메모, troubleshooting을 유지합니다.
