@@ -7,14 +7,14 @@
 - `session_YYYYMMDD_001` 형식의 세션 ID를 표시합니다.
 - 기본 카트 번호 `001`과 8개 박스 촬영 순서를 표시합니다.
 - 2열 4행 촬영 순서에서 현재 박스와 촬영 완료 박스를 구분합니다.
-- `촬영`, `재촬영`, `이전 박스`, `다음 박스`, `카트 완료`, `세션 내보내기` 동작을 브라우저 상태로 처리합니다.
+- `촬영`, `재촬영`, `이전 박스`, `다음 박스`, `카트 완료`, `사진 ZIP 만들기` 동작을 브라우저 상태로 처리합니다.
 - 사용자가 `카메라 시작`을 누르면 `getUserMedia`로 카메라 미리보기를 시작합니다.
 - 가능한 경우 후면 카메라를 우선 사용하고, 실패하면 기본 카메라로 재시도합니다.
 - `촬영`을 누르면 현재 video 프레임을 canvas로 캡처하고 JPEG Blob으로 변환합니다.
 - IndexedDB에 JPEG Blob과 이미지 메타데이터를 저장하고 새로고침 후 복원합니다.
 - 박스별 사진 미리보기와 이미지 메타데이터를 보여줍니다.
 - `manifest.json` / `manifest.csv` 미리보기에 파일 경로와 이미지 메타데이터를 포함합니다.
-- `세션 내보내기`로 IndexedDB에 저장된 JPEG 사진과 `manifest.json`, `manifest.csv`를 ZIP으로 묶습니다.
+- `사진 ZIP 만들기`로 IndexedDB에 저장된 JPEG 사진과 `manifest.json`, `manifest.csv`를 ZIP으로 묶습니다.
 - ZIP은 다운로드하거나 Web Share API가 지원되는 브라우저에서 공유할 수 있습니다.
 - Blob은 IndexedDB에 저장하고, object URL은 런타임 메모리에만 둡니다.
 - `localStorage`에는 가벼운 세션 상태와 metadata만 저장합니다.

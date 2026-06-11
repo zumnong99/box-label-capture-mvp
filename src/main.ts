@@ -339,7 +339,7 @@ function renderManifestPanel(): string {
   const summary = exportSummary
   const progressText = exportProgress
     ? formatExportProgress(exportProgress)
-    : exportStatusMessage || '세션 내보내기를 준비합니다.'
+    : exportStatusMessage || '사진 ZIP을 준비합니다.'
   const incompleteCarts =
     summary && summary.incompleteCartNos.length > 0
       ? summary.incompleteCartNos.join(', ')
@@ -360,29 +360,16 @@ function renderManifestPanel(): string {
         }),
       )
     : false
+  const packageSummary = summary
+    ? `사진 ${summary.photosAvailable}개 + manifest.json + manifest.csv`
+    : '사진 ZIP을 준비하는 중입니다.'
 
   return `
-    <section class="manifest-panel" aria-label="세션 내보내기">
+    <section class="manifest-panel" aria-label="사진 ZIP 내보내기">
       <div class="section-heading">
         <div>
-          <h2>세션 내보내기</h2>
-          <p>${session.sessionId}</p>
-        </div>
-        <div class="segmented-control" aria-label="매니페스트 형식">
-          <button
-            class="${manifestMode === 'json' ? 'is-selected' : ''}"
-            type="button"
-            data-manifest-mode="json"
-          >
-            JSON
-          </button>
-          <button
-            class="${manifestMode === 'csv' ? 'is-selected' : ''}"
-            type="button"
-            data-manifest-mode="csv"
-          >
-            CSV
-          </button>
+          <h2>사진 ZIP 내보내기</h2>
+          <p>${escapeHtml(packageSummary)}</p>
         </div>
       </div>
       <div class="export-status ${exportStatusTone}" role="status">
@@ -458,7 +445,26 @@ function renderManifestPanel(): string {
           `
           : ''
       }
-      <pre>${escapeHtml(getManifestPreview())}</pre>
+      <details class="manifest-preview">
+        <summary>manifest 미리보기</summary>
+        <div class="segmented-control" aria-label="매니페스트 형식">
+          <button
+            class="${manifestMode === 'json' ? 'is-selected' : ''}"
+            type="button"
+            data-manifest-mode="json"
+          >
+            JSON
+          </button>
+          <button
+            class="${manifestMode === 'csv' ? 'is-selected' : ''}"
+            type="button"
+            data-manifest-mode="csv"
+          >
+            CSV
+          </button>
+        </div>
+        <pre>${escapeHtml(getManifestPreview())}</pre>
+      </details>
     </section>
   `
 }
@@ -889,6 +895,23 @@ function render(): void {
             카메라 미리보기
           </div>
           <div class="label-guide" aria-hidden="true"></div>
+          <div class="camera-capture-bar">
+            <button
+              class="primary-action"
+              type="button"
+              data-action="capture"
+              ${hasCameraStream ? '' : 'disabled'}
+            >
+              촬영
+            </button>
+            <button
+              type="button"
+              data-action="retake"
+              ${hasCameraStream ? '' : 'disabled'}
+            >
+              재촬영
+            </button>
+          </div>
         </div>
         <div class="camera-status ${cameraStatusTone}" role="status">
           ${cameraStatusMessage}
@@ -924,8 +947,6 @@ function render(): void {
       </section>
 
       <section class="action-panel" aria-label="촬영 조작">
-        <button class="primary-action" type="button" data-action="capture">촬영</button>
-        <button type="button" data-action="retake">재촬영</button>
         <button
           type="button"
           data-action="previous"
@@ -946,7 +967,7 @@ function render(): void {
           data-action="export"
           ${exportIsBuilding ? 'disabled' : ''}
         >
-          세션 내보내기
+          사진 ZIP 만들기
         </button>
       </section>
 
@@ -1112,10 +1133,4 @@ void restorePersistedPhotosForSession()
 window.addEventListener('beforeunload', () => {
   stopActiveCamera('카메라 대기 중', false)
   clearCapturedImages()
-})
-
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden && cameraStream) {
-    stopActiveCamera('카메라 대기 중')
-  }
 })

@@ -137,7 +137,7 @@ p {
 
 .camera-preview-frame {
   position: relative;
-  min-height: 330px;
+  min-height: 360px;
   background:
     linear-gradient(135deg, rgba(37, 99, 235, 0.25), transparent 45%),
     linear-gradient(45deg, rgba(15, 118, 110, 0.24), transparent 50%),
@@ -180,6 +180,46 @@ p {
     0 0 28px rgba(250, 204, 21, 0.35);
   transform: translate(-50%, -50%);
   pointer-events: none;
+}
+
+.camera-capture-bar {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1fr minmax(96px, 0.42fr);
+  gap: 10px;
+  padding:
+    12px 12px
+    calc(12px + env(safe-area-inset-bottom));
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(15, 23, 42, 0.72) 34%,
+    rgba(15, 23, 42, 0.96)
+  );
+}
+
+.camera-capture-bar button {
+  min-height: 58px;
+  border-color: rgba(255, 255, 255, 0.36);
+  color: #f8fafc;
+  background: rgba(30, 41, 59, 0.92);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.28);
+}
+
+.camera-capture-bar .primary-action {
+  min-height: 64px;
+  border-color: #14b8a6;
+  font-size: 21px;
+  background: #0f766e;
+}
+
+.camera-capture-bar button:disabled {
+  color: rgba(226, 232, 240, 0.58);
+  background: rgba(51, 65, 85, 0.88);
 }
 
 .camera-status {
@@ -529,6 +569,24 @@ p {
   background: #fef3c7;
 }
 
+.manifest-preview {
+  margin-top: 10px;
+}
+
+.manifest-preview summary {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.manifest-preview .segmented-control {
+  margin-bottom: 10px;
+}
+
 .manifest-panel pre {
   max-height: 260px;
   margin: 0;
@@ -670,6 +728,6 @@ p {
 
 @media (min-width: 430px) {
   .camera-preview-frame {
-    min-height: 380px;
+    min-height: 420px;
   }
 }
