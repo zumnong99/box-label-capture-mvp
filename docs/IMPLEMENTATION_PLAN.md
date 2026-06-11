@@ -20,9 +20,12 @@
 - video 프레임을 canvas로 캡처합니다.
 - 라벨 촬영에 충분한 최대 해상도와 JPEG 품질 기준을 정합니다.
 - 저장 전 파일 이름 규칙과 현재 박스 상태를 연결합니다.
+- 현재 단계에서는 Blob/object URL을 런타임 메모리에만 보관합니다.
+- 정사각형 가이드는 크롭 기준이 아니라 촬영 안내용으로만 유지합니다.
 
 ## Step 4: IndexedDB blob storage
 
+- Step 3의 런타임 이미지 저장소를 IndexedDB 기반 영구 저장으로 확장합니다.
 - 이미지 blob은 `localStorage`가 아닌 IndexedDB에 저장합니다.
 - 세션 상태와 blob 저장소의 키를 분리합니다.
 - 세션 삭제 시 blob도 함께 정리합니다.

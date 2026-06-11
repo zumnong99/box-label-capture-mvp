@@ -8,6 +8,10 @@ export interface ManifestBox {
   retake_count: number
   file_path: string
   captured_at: string | null
+  image_width: number | null
+  image_height: number | null
+  image_size_bytes: number | null
+  mime_type: string | null
 }
 
 export interface ManifestCart {
@@ -46,6 +50,10 @@ export function buildManifest(
         retake_count: box.retakeCount,
         file_path: box.filePath,
         captured_at: box.capturedAt,
+        image_width: box.imageWidth ?? null,
+        image_height: box.imageHeight ?? null,
+        image_size_bytes: box.imageSizeBytes ?? null,
+        mime_type: box.mimeType ?? null,
       })),
     })),
   }
@@ -70,6 +78,10 @@ export function buildManifestCsv(
     'retake_count',
     'file_path',
     'captured_at',
+    'image_width',
+    'image_height',
+    'image_size_bytes',
+    'mime_type',
     'exported_at',
   ]
 
@@ -85,6 +97,10 @@ export function buildManifestCsv(
         box.retakeCount,
         box.filePath,
         box.capturedAt,
+        box.imageWidth ?? null,
+        box.imageHeight ?? null,
+        box.imageSizeBytes ?? null,
+        box.mimeType ?? null,
         exportedAt,
       ].map(escapeCsvValue),
     ),

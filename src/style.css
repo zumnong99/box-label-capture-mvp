@@ -239,6 +239,7 @@ p {
 
 .order-section,
 .action-panel,
+.photo-section,
 .manifest-panel {
   padding: 12px;
   border: 1px solid #d8dee8;
@@ -343,6 +344,92 @@ p {
   color: #ffffff;
   font-size: 19px;
   background: #0f766e;
+}
+
+.capture-status {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 900;
+  background: #f1f5f9;
+}
+
+.capture-status.running {
+  color: #14532d;
+  background: #dcfce7;
+}
+
+.capture-status.error {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.photo-preview-layout {
+  display: grid;
+  gap: 12px;
+}
+
+.photo-preview-image {
+  width: 100%;
+  max-height: 260px;
+  display: block;
+  object-fit: contain;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #0f172a;
+}
+
+.photo-metadata {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.photo-metadata div {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.photo-metadata div:last-child {
+  border-bottom: 0;
+}
+
+.photo-metadata dt {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.photo-metadata dd {
+  margin: 0;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 800;
+  word-break: break-word;
+}
+
+.photo-empty,
+.photo-warning {
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.photo-empty {
+  color: #475569;
+  background: #f1f5f9;
+}
+
+.photo-warning {
+  margin-top: 8px;
+  color: #92400e;
+  background: #fef3c7;
 }
 
 .manifest-panel pre {

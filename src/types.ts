@@ -13,6 +13,10 @@ export interface BoxState {
   retakeCount: number
   capturedAt: string | null
   filePath: string
+  imageWidth?: number | null
+  imageHeight?: number | null
+  imageSizeBytes?: number | null
+  mimeType?: 'image/jpeg' | null
 }
 
 export interface CartState {

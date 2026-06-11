@@ -5,6 +5,7 @@ import {
   LAYOUT_TYPE,
   SESSION_SEQUENCE,
 } from './constants'
+import { getRelativeImagePath } from './filenames'
 import type { BoxState, CartState, SessionState } from './types'
 
 function padNumber(value: number, size: number): string {
@@ -26,7 +27,7 @@ export function createSessionId(
 }
 
 export function createBoxFilePath(cartNo: string, boxNo: number): string {
-  return `cart_${cartNo}/cart_${cartNo}_box_${padNumber(boxNo, 2)}.jpg`
+  return getRelativeImagePath(cartNo, boxNo)
 }
 
 export function createCart(cartNo = DEFAULT_CART_NO): CartState {
@@ -40,6 +41,10 @@ export function createCart(cartNo = DEFAULT_CART_NO): CartState {
     retakeCount: 0,
     capturedAt: null,
     filePath: createBoxFilePath(cartNo, box.boxNo),
+    imageWidth: null,
+    imageHeight: null,
+    imageSizeBytes: null,
+    mimeType: null,
   }))
 
   return {
@@ -140,6 +145,12 @@ export function moveToNextBox(session: SessionState): SessionState {
 export function captureCurrentBox(
   session: SessionState,
   capturedAt = new Date().toISOString(),
+  imageMetadata?: {
+    imageWidth: number
+    imageHeight: number
+    imageSizeBytes: number
+    mimeType: 'image/jpeg'
+  },
 ): SessionState {
   return updateActiveCart(session, (cart) => {
     const nextBoxes = cart.boxes.map((box) =>
@@ -148,6 +159,11 @@ export function captureCurrentBox(
             ...box,
             status: 'captured' as const,
             capturedAt,
+            imageWidth: imageMetadata?.imageWidth ?? box.imageWidth ?? null,
+            imageHeight: imageMetadata?.imageHeight ?? box.imageHeight ?? null,
+            imageSizeBytes:
+              imageMetadata?.imageSizeBytes ?? box.imageSizeBytes ?? null,
+            mimeType: imageMetadata?.mimeType ?? box.mimeType ?? null,
           }
         : box,
     )
@@ -175,14 +191,27 @@ export function captureCurrentBox(
 export function retakeCurrentBox(
   session: SessionState,
   capturedAt = new Date().toISOString(),
+  imageMetadata?: {
+    imageWidth: number
+    imageHeight: number
+    imageSizeBytes: number
+    mimeType: 'image/jpeg'
+  },
 ): SessionState {
   return updateActiveCart(session, (cart) => {
     const nextBoxes = cart.boxes.map((box) =>
-      box.boxNo === cart.currentBoxNo && box.status === 'captured'
+      box.boxNo === cart.currentBoxNo
         ? {
             ...box,
-            retakeCount: box.retakeCount + 1,
+            status: 'captured' as const,
+            retakeCount:
+              box.status === 'captured' ? box.retakeCount + 1 : box.retakeCount,
             capturedAt,
+            imageWidth: imageMetadata?.imageWidth ?? box.imageWidth ?? null,
+            imageHeight: imageMetadata?.imageHeight ?? box.imageHeight ?? null,
+            imageSizeBytes:
+              imageMetadata?.imageSizeBytes ?? box.imageSizeBytes ?? null,
+            mimeType: imageMetadata?.mimeType ?? box.mimeType ?? null,
           }
         : box,
     )

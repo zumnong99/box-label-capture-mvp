@@ -1,5 +1,13 @@
 import './style.css'
 import { startCameraPreview, stopCameraPreview } from './camera'
+import { captureVideoFrame } from './capture'
+import { getImageFilename } from './filenames'
+import {
+  clearCapturedImages,
+  getCapturedImage,
+  getCapturedImageKey,
+  setCapturedImage,
+} from './photo-store'
 import {
   captureCurrentBox,
   createSession,
@@ -13,10 +21,11 @@ import {
 } from './state'
 import { buildManifest, buildManifestCsv } from './manifest'
 import { clearStoredSession, loadSession, saveSession } from './storage'
+import type { CapturedImage } from './capture'
 import type { SessionState } from './types'
 
 type ManifestPreviewMode = 'json' | 'csv'
-type CameraStatusTone = 'idle' | 'loading' | 'running' | 'error'
+type StatusTone = 'idle' | 'loading' | 'running' | 'error'
 
 const appElement = document.querySelector<HTMLDivElement>('#app')
 
@@ -31,8 +40,10 @@ let manifestVisible = false
 let manifestMode: ManifestPreviewMode = 'json'
 let cameraStream: MediaStream | null = null
 let cameraStatusMessage = '카메라 대기 중'
-let cameraStatusTone: CameraStatusTone = 'idle'
+let cameraStatusTone: StatusTone = 'idle'
 let cameraIsStarting = false
+let captureStatusMessage = ''
+let captureStatusTone: StatusTone = 'idle'
 
 function escapeHtml(value: string): string {
   return value
@@ -57,6 +68,59 @@ function getManifestPreview(): string {
   }
 
   return JSON.stringify(buildManifest(session, exportedAt), null, 2)
+}
+
+function getCurrentImageKey(): string {
+  const cart = getActiveCart(session)
+  const box = getCurrentBox(session)
+  return getCapturedImageKey(session.sessionId, cart.cartNo, box.boxNo)
+}
+
+function getImageMetadata(image: CapturedImage): {
+  imageWidth: number
+  imageHeight: number
+  imageSizeBytes: number
+  mimeType: 'image/jpeg'
+} {
+  return {
+    imageWidth: image.width,
+    imageHeight: image.height,
+    imageSizeBytes: image.sizeBytes,
+    mimeType: image.mimeType,
+  }
+}
+
+function formatFileSize(sizeBytes: number): string {
+  if (sizeBytes >= 1024 * 1024) {
+    return `${(sizeBytes / 1024 / 1024).toFixed(2)} MB`
+  }
+
+  return `${Math.max(1, Math.round(sizeBytes / 1024))} KB`
+}
+
+function formatTimestamp(value: string | null): string {
+  if (!value) {
+    return '-'
+  }
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return date.toLocaleString('ko-KR', {
+    dateStyle: 'short',
+    timeStyle: 'medium',
+  })
+}
+
+function getCaptureErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+
+  return '알 수 없는 촬영 오류가 발생했습니다'
 }
 
 function renderBoxGrid(): string {
@@ -120,6 +184,75 @@ function renderManifestPanel(): string {
   `
 }
 
+function renderPhotoPreview(): string {
+  const cart = getActiveCart(session)
+  const currentBox = getCurrentBox(session)
+  const image = getCapturedImage(getCurrentImageKey())
+  const expectedFilename = getImageFilename(cart.cartNo, currentBox.boxNo)
+  const missingRuntimePreview =
+    currentBox.status === 'captured' && image === null
+
+  const statusHtml = captureStatusMessage
+    ? `<div class="capture-status ${captureStatusTone}" role="status">${escapeHtml(
+        captureStatusMessage,
+      )}</div>`
+    : ''
+
+  const previewBody = image
+    ? `
+      <div class="photo-preview-layout">
+        <img
+          class="photo-preview-image"
+          src="${escapeHtml(image.objectUrl)}"
+          alt="${currentBox.boxNo}번 박스 촬영 미리보기"
+        />
+        <dl class="photo-metadata">
+          <div>
+            <dt>이미지 크기</dt>
+            <dd>${image.width} × ${image.height}px</dd>
+          </div>
+          <div>
+            <dt>파일 크기</dt>
+            <dd>${formatFileSize(image.sizeBytes)}</dd>
+          </div>
+          <div>
+            <dt>촬영 시각</dt>
+            <dd>${formatTimestamp(image.capturedAt)}</dd>
+          </div>
+          <div>
+            <dt>재촬영 횟수</dt>
+            <dd>${currentBox.retakeCount}</dd>
+          </div>
+          <div>
+            <dt>예상 파일명</dt>
+            <dd>${expectedFilename}</dd>
+          </div>
+        </dl>
+      </div>
+    `
+    : `
+      <p class="photo-empty">아직 촬영된 사진이 없습니다.</p>
+      ${
+        missingRuntimePreview
+          ? `<p class="photo-warning">이 사진은 아직 브라우저 영구 저장 전 단계라 새로고침 후 미리보기가 사라질 수 있습니다.</p>`
+          : ''
+      }
+    `
+
+  return `
+    <section class="photo-section" aria-label="현재 박스 사진 미리보기">
+      <div class="section-heading">
+        <div>
+          <h2>현재 박스 사진</h2>
+          <p>${currentBox.boxNo}번 · ${expectedFilename}</p>
+        </div>
+      </div>
+      ${statusHtml}
+      ${previewBody}
+    </section>
+  `
+}
+
 function syncCameraVideo(): void {
   const videoElement =
     app.querySelector<HTMLVideoElement>('[data-camera-preview]')
@@ -151,6 +284,56 @@ function stopActiveCamera(
   cameraStatusTone = 'idle'
 
   if (shouldRender) {
+    render()
+  }
+}
+
+async function captureForCurrentBox(mode: 'capture' | 'retake'): Promise<void> {
+  const cart = getActiveCart(session)
+  const currentBox = getCurrentBox(session)
+  const videoElement =
+    app.querySelector<HTMLVideoElement>('[data-camera-preview]')
+
+  if (!cameraStream || !videoElement) {
+    captureStatusMessage =
+      mode === 'retake'
+        ? '재촬영하려면 카메라 미리보기를 먼저 시작하세요.'
+        : '카메라 미리보기를 먼저 시작하세요.'
+    captureStatusTone = 'error'
+    render()
+    return
+  }
+
+  if (
+    mode === 'capture' &&
+    currentBox.status === 'captured' &&
+    !window.confirm('현재 박스는 이미 촬영되어 있습니다. 덮어쓸까요?')
+  ) {
+    return
+  }
+
+  try {
+    const image = await captureVideoFrame(videoElement)
+    const key = getCapturedImageKey(session.sessionId, cart.cartNo, currentBox.boxNo)
+    setCapturedImage(key, image)
+
+    captureStatusMessage =
+      mode === 'retake' && currentBox.status === 'captured'
+        ? `${currentBox.boxNo}번 사진을 재촬영했습니다.`
+        : `${currentBox.boxNo}번 사진을 임시 저장했습니다.`
+    captureStatusTone = 'running'
+
+    const metadata = getImageMetadata(image)
+    const nextSession =
+      mode === 'retake' && currentBox.status === 'captured'
+        ? retakeCurrentBox(session, image.capturedAt, metadata)
+        : captureCurrentBox(session, image.capturedAt, metadata)
+
+    commitSession(nextSession)
+  } catch (error) {
+    console.error('Image capture failed', error)
+    captureStatusMessage = getCaptureErrorMessage(error)
+    captureStatusTone = 'error'
     render()
   }
 }
@@ -258,6 +441,8 @@ function render(): void {
         <button type="button" data-action="export">세션 내보내기</button>
       </section>
 
+      ${renderPhotoPreview()}
+
       ${renderManifestPanel()}
     </main>
   `
@@ -314,27 +499,11 @@ function bindEvents(): void {
   })
 
   app.querySelector('[data-action="capture"]')?.addEventListener('click', () => {
-    const currentBox = getCurrentBox(session)
-
-    if (
-      currentBox.status === 'captured' &&
-      !window.confirm('현재 박스는 이미 촬영되어 있습니다. 덮어쓸까요?')
-    ) {
-      return
-    }
-
-    commitSession(captureCurrentBox(session))
+    void captureForCurrentBox('capture')
   })
 
   app.querySelector('[data-action="retake"]')?.addEventListener('click', () => {
-    const currentBox = getCurrentBox(session)
-
-    if (currentBox.status !== 'captured') {
-      window.alert('촬영된 박스만 재촬영할 수 있습니다.')
-      return
-    }
-
-    commitSession(retakeCurrentBox(session))
+    void captureForCurrentBox('retake')
   })
 
   app.querySelector('[data-action="previous"]')?.addEventListener('click', () => {
@@ -366,8 +535,11 @@ function bindEvents(): void {
     }
 
     clearStoredSession()
+    clearCapturedImages()
     manifestVisible = false
     manifestMode = 'json'
+    captureStatusMessage = ''
+    captureStatusTone = 'idle'
     commitSession(createSession())
   })
 
@@ -393,6 +565,7 @@ render()
 
 window.addEventListener('beforeunload', () => {
   stopActiveCamera('카메라 대기 중', false)
+  clearCapturedImages()
 })
 
 document.addEventListener('visibilitychange', () => {
