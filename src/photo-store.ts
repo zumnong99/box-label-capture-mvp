@@ -1,26 +1,50 @@
 import type { CapturedImage } from './capture'
+import {
+  createCapturedImageFromRecord,
+  type PersistedPhotoRecord,
+} from './indexed-photo-store'
+export { getCapturedImageKey } from './photo-keys'
 
-const capturedImages = new Map<string, CapturedImage>()
-
-export function getCapturedImageKey(
-  sessionId: string,
-  cartNo: string,
-  boxNo: number,
-): string {
-  return `${sessionId}::${cartNo}::${boxNo}`
+export type RuntimeCapturedImage = CapturedImage & {
+  persisted: boolean
 }
 
-export function setCapturedImage(key: string, image: CapturedImage): void {
+const capturedImages = new Map<string, RuntimeCapturedImage>()
+
+export function setCapturedImage(
+  key: string,
+  image: CapturedImage,
+  options: { persisted: boolean },
+): void {
   const existingImage = capturedImages.get(key)
 
   if (existingImage && existingImage.objectUrl !== image.objectUrl) {
     URL.revokeObjectURL(existingImage.objectUrl)
   }
 
-  capturedImages.set(key, image)
+  capturedImages.set(key, {
+    ...image,
+    persisted: options.persisted,
+  })
 }
 
-export function getCapturedImage(key: string): CapturedImage | null {
+export function setPersistedPhotoRecord(
+  record: PersistedPhotoRecord,
+): RuntimeCapturedImage {
+  const image = createCapturedImageFromRecord(record)
+  setCapturedImage(record.key, image, { persisted: true })
+  return getCapturedImage(record.key) as RuntimeCapturedImage
+}
+
+export function markCapturedImagePersisted(key: string): void {
+  const image = capturedImages.get(key)
+
+  if (image) {
+    image.persisted = true
+  }
+}
+
+export function getCapturedImage(key: string): RuntimeCapturedImage | null {
   return capturedImages.get(key) ?? null
 }
 

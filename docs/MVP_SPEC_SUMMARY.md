@@ -5,7 +5,7 @@
 - 세션은 하루 작업 단위의 최상위 묶음입니다.
 - MVP 기본 세션 ID는 `session_YYYYMMDD_001` 형식입니다.
 - 카트는 박스 8개를 담는 작업 묶음이며, 기본 카트 번호는 `001`입니다.
-- 박스는 촬영 상태, 위치, 재촬영 횟수, placeholder 파일 경로를 가집니다.
+- 박스는 촬영 상태, 위치, 재촬영 횟수, 파일 경로, 이미지 metadata를 가집니다.
 
 ## 2x4 촬영 순서
 
@@ -22,7 +22,7 @@
 
 ## 파일 이름 규칙
 
-첫 구현은 실제 이미지를 만들지 않고 다음 placeholder 경로만 manifest에 기록합니다.
+사진 파일 경로는 다음 규칙으로 manifest와 IndexedDB record에 기록합니다.
 
 ```text
 cart_001/cart_001_box_01.jpg
@@ -47,14 +47,14 @@ cart_001/cart_001_box_08.jpg
 - `카메라 중지`는 모든 media track을 중지합니다.
 - 현재 단계는 video 프레임을 canvas로 캡처하고 JPEG Blob으로 변환합니다.
 - 정사각형 가이드는 시각 안내용이며, 저장 대상은 크기 조정된 전체 카메라 프레임입니다.
-- 사진 Blob과 object URL은 런타임 메모리에만 보관합니다.
-- 새로고침 후에는 촬영 완료 상태는 남아도 사진 미리보기는 사라질 수 있습니다.
+- 사진 Blob은 IndexedDB `photos` object store에 저장합니다.
+- object URL은 IndexedDB에 저장하지 않고 런타임 미리보기용으로만 생성합니다.
+- 새로고침 후에는 현재 세션의 IndexedDB 사진을 다시 읽어 object URL을 재생성합니다.
+- IndexedDB에 사진이 있지만 localStorage 상태가 촬영 완료가 아니면 삭제하지 않고, 해당 박스 선택 시 표시할 수 있게 남깁니다.
 
 ## 제외 기능
 
 - OCR
-- 실제 사진 영구 저장
-- IndexedDB blob 저장
 - JSZip 내보내기
 - DB 저장
 - 백엔드 업로드

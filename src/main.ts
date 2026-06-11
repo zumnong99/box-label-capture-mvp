@@ -3,10 +3,19 @@ import { startCameraPreview, stopCameraPreview } from './camera'
 import { captureVideoFrame } from './capture'
 import { getImageFilename } from './filenames'
 import {
+  buildPersistedPhotoRecord,
+  deletePhotosForSession,
+  getPhotosForSession,
+  getStorageEstimate,
+  isIndexedDbSupported,
+  savePhoto,
+} from './indexed-photo-store'
+import {
   clearCapturedImages,
   getCapturedImage,
   getCapturedImageKey,
   setCapturedImage,
+  setPersistedPhotoRecord,
 } from './photo-store'
 import {
   captureCurrentBox,
@@ -25,7 +34,7 @@ import type { CapturedImage } from './capture'
 import type { SessionState } from './types'
 
 type ManifestPreviewMode = 'json' | 'csv'
-type StatusTone = 'idle' | 'loading' | 'running' | 'error'
+type StatusTone = 'idle' | 'loading' | 'running' | 'warning' | 'error'
 
 const appElement = document.querySelector<HTMLDivElement>('#app')
 
@@ -44,6 +53,14 @@ let cameraStatusTone: StatusTone = 'idle'
 let cameraIsStarting = false
 let captureStatusMessage = ''
 let captureStatusTone: StatusTone = 'idle'
+let photoStorageStatusMessage = isIndexedDbSupported()
+  ? 'IndexedDB 저장소 확인 중'
+  : '이 브라우저에서는 사진 영구 저장을 사용할 수 없습니다. 새로고침하면 사진이 사라질 수 있습니다.'
+let photoStorageStatusTone: StatusTone = isIndexedDbSupported()
+  ? 'loading'
+  : 'warning'
+let photoStorageEstimateMessage = ''
+let photoRestoreCompleted = false
 
 function escapeHtml(value: string): string {
   return value
@@ -98,6 +115,14 @@ function formatFileSize(sizeBytes: number): string {
   return `${Math.max(1, Math.round(sizeBytes / 1024))} KB`
 }
 
+function formatStorageEstimate(usage?: number, quota?: number): string {
+  if (usage === undefined || quota === undefined) {
+    return ''
+  }
+
+  return `저장소 사용량 약 ${formatFileSize(usage)} / ${formatFileSize(quota)}`
+}
+
 function formatTimestamp(value: string | null): string {
   if (!value) {
     return '-'
@@ -121,6 +146,12 @@ function getCaptureErrorMessage(error: unknown): string {
   }
 
   return '알 수 없는 촬영 오류가 발생했습니다'
+}
+
+function isBoxCapturedInState(cartNo: string, boxNo: number): boolean {
+  const cart = session.carts.find((candidate) => candidate.cartNo === cartNo)
+  const box = cart?.boxes.find((candidate) => candidate.boxNo === boxNo)
+  return box?.status === 'captured'
 }
 
 function renderBoxGrid(): string {
@@ -190,7 +221,14 @@ function renderPhotoPreview(): string {
   const image = getCapturedImage(getCurrentImageKey())
   const expectedFilename = getImageFilename(cart.cartNo, currentBox.boxNo)
   const missingRuntimePreview =
-    currentBox.status === 'captured' && image === null
+    photoRestoreCompleted && currentBox.status === 'captured' && image === null
+  const pendingRestore =
+    !photoRestoreCompleted && currentBox.status === 'captured' && image === null
+  const storageState = image
+    ? image.persisted
+      ? '사진 저장됨 · IndexedDB 저장 완료'
+      : '사진 임시 보관 중'
+    : '사진 없음'
 
   const statusHtml = captureStatusMessage
     ? `<div class="capture-status ${captureStatusTone}" role="status">${escapeHtml(
@@ -206,6 +244,9 @@ function renderPhotoPreview(): string {
           src="${escapeHtml(image.objectUrl)}"
           alt="${currentBox.boxNo}번 박스 촬영 미리보기"
         />
+        <div class="photo-save-state ${image.persisted ? 'saved' : 'warning'}">
+          ${storageState}
+        </div>
         <dl class="photo-metadata">
           <div>
             <dt>이미지 크기</dt>
@@ -234,7 +275,12 @@ function renderPhotoPreview(): string {
       <p class="photo-empty">아직 촬영된 사진이 없습니다.</p>
       ${
         missingRuntimePreview
-          ? `<p class="photo-warning">이 사진은 아직 브라우저 영구 저장 전 단계라 새로고침 후 미리보기가 사라질 수 있습니다.</p>`
+          ? `<p class="photo-warning">촬영 상태는 남아 있지만 저장된 사진을 찾을 수 없습니다. 다시 촬영하세요.</p>`
+          : ''
+      }
+      ${
+        pendingRestore
+          ? `<p class="photo-warning">저장된 사진을 확인하는 중입니다.</p>`
           : ''
       }
     `
@@ -246,6 +292,14 @@ function renderPhotoPreview(): string {
           <h2>현재 박스 사진</h2>
           <p>${currentBox.boxNo}번 · ${expectedFilename}</p>
         </div>
+      </div>
+      <div class="storage-status ${photoStorageStatusTone}">
+        <strong>${photoStorageStatusMessage}</strong>
+        ${
+          photoStorageEstimateMessage
+            ? `<span>${photoStorageEstimateMessage}</span>`
+            : ''
+        }
       </div>
       ${statusHtml}
       ${previewBody}
@@ -315,13 +369,45 @@ async function captureForCurrentBox(mode: 'capture' | 'retake'): Promise<void> {
   try {
     const image = await captureVideoFrame(videoElement)
     const key = getCapturedImageKey(session.sessionId, cart.cartNo, currentBox.boxNo)
-    setCapturedImage(key, image)
+    const nextRetakeCount =
+      mode === 'retake' && currentBox.status === 'captured'
+        ? currentBox.retakeCount + 1
+        : currentBox.retakeCount
+    const record = buildPersistedPhotoRecord({
+      sessionId: session.sessionId,
+      cartNo: cart.cartNo,
+      boxNo: currentBox.boxNo,
+      image,
+      retakeCount: nextRetakeCount,
+    })
+
+    let persisted = false
+
+    try {
+      if (!isIndexedDbSupported()) {
+        throw new Error('IndexedDB를 사용할 수 없습니다')
+      }
+
+      await savePhoto(record)
+      persisted = true
+      setCapturedImage(key, image, { persisted: true })
+      photoStorageStatusMessage = 'IndexedDB 저장 완료'
+      photoStorageStatusTone = 'running'
+      void refreshStorageEstimate()
+    } catch (saveError) {
+      console.error('Photo persistence failed', saveError)
+      setCapturedImage(key, image, { persisted: false })
+      photoStorageStatusMessage = '사진 저장에 실패했습니다'
+      photoStorageStatusTone = 'warning'
+    }
 
     captureStatusMessage =
-      mode === 'retake' && currentBox.status === 'captured'
-        ? `${currentBox.boxNo}번 사진을 재촬영했습니다.`
-        : `${currentBox.boxNo}번 사진을 임시 저장했습니다.`
-    captureStatusTone = 'running'
+      persisted
+        ? mode === 'retake' && currentBox.status === 'captured'
+          ? `${currentBox.boxNo}번 사진을 재촬영하고 저장했습니다.`
+          : `${currentBox.boxNo}번 사진을 촬영하고 저장했습니다.`
+        : '사진은 촬영되었지만 브라우저 저장에 실패했습니다. 새로고침하면 사라질 수 있습니다.'
+    captureStatusTone = persisted ? 'running' : 'warning'
 
     const metadata = getImageMetadata(image)
     const nextSession =
@@ -336,6 +422,87 @@ async function captureForCurrentBox(mode: 'capture' | 'retake'): Promise<void> {
     captureStatusTone = 'error'
     render()
   }
+}
+
+async function refreshStorageEstimate(): Promise<void> {
+  try {
+    const estimate = await getStorageEstimate()
+    photoStorageEstimateMessage = formatStorageEstimate(
+      estimate.usage,
+      estimate.quota,
+    )
+    render()
+  } catch (error) {
+    console.error('Storage estimate failed', error)
+  }
+}
+
+async function restorePersistedPhotosForSession(): Promise<void> {
+  if (!isIndexedDbSupported()) {
+    photoRestoreCompleted = true
+    render()
+    return
+  }
+
+  try {
+    const records = await getPhotosForSession(session.sessionId)
+
+    records.forEach((record) => {
+      setPersistedPhotoRecord(record)
+
+      if (!isBoxCapturedInState(record.cartNo, record.boxNo)) {
+        console.warn(
+          'IndexedDB photo exists without captured local state',
+          record.key,
+        )
+      }
+    })
+
+    photoRestoreCompleted = true
+    photoStorageStatusMessage =
+      records.length > 0
+        ? `${records.length}개 사진을 IndexedDB에서 복원했습니다.`
+        : 'IndexedDB 저장 준비 완료'
+    photoStorageStatusTone = 'running'
+    await refreshStorageEstimate()
+    render()
+  } catch (error) {
+    console.error('Photo restore failed', error)
+    photoRestoreCompleted = true
+    photoStorageStatusMessage = '저장된 사진을 불러오지 못했습니다'
+    photoStorageStatusTone = 'error'
+    render()
+  }
+}
+
+async function resetSession(): Promise<void> {
+  if (!window.confirm('현재 임시 세션을 삭제하고 새 세션을 시작할까요?')) {
+    return
+  }
+
+  const oldSessionId = session.sessionId
+
+  if (isIndexedDbSupported()) {
+    try {
+      await deletePhotosForSession(oldSessionId)
+      photoStorageStatusMessage = '이전 세션 사진을 삭제했습니다'
+      photoStorageStatusTone = 'running'
+    } catch (error) {
+      console.error('Session photo cleanup failed', error)
+      photoStorageStatusMessage = '이전 세션 사진 삭제에 실패했습니다'
+      photoStorageStatusTone = 'warning'
+    }
+  }
+
+  clearStoredSession()
+  clearCapturedImages()
+  manifestVisible = false
+  manifestMode = 'json'
+  captureStatusMessage = ''
+  captureStatusTone = 'idle'
+  photoRestoreCompleted = true
+  commitSession(createSession())
+  void refreshStorageEstimate()
 }
 
 function render(): void {
@@ -530,17 +697,7 @@ function bindEvents(): void {
   })
 
   app.querySelector('[data-action="reset"]')?.addEventListener('click', () => {
-    if (!window.confirm('현재 임시 세션을 삭제하고 새 세션을 시작할까요?')) {
-      return
-    }
-
-    clearStoredSession()
-    clearCapturedImages()
-    manifestVisible = false
-    manifestMode = 'json'
-    captureStatusMessage = ''
-    captureStatusTone = 'idle'
-    commitSession(createSession())
+    void resetSession()
   })
 
   app.querySelectorAll<HTMLButtonElement>('[data-box-no]').forEach((button) => {
@@ -562,6 +719,7 @@ function bindEvents(): void {
 
 saveSession(session)
 render()
+void restorePersistedPhotosForSession()
 
 window.addEventListener('beforeunload', () => {
   stopActiveCamera('카메라 대기 중', false)

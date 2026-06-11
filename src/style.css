@@ -361,7 +361,44 @@ p {
   background: #dcfce7;
 }
 
+.capture-status.warning {
+  color: #92400e;
+  background: #fef3c7;
+}
+
 .capture-status.error {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.storage-status {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 4px;
+  border-radius: 8px;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 900;
+  background: #f1f5f9;
+}
+
+.storage-status span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.storage-status.running {
+  color: #14532d;
+  background: #dcfce7;
+}
+
+.storage-status.warning {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.storage-status.error {
   color: #991b1b;
   background: #fee2e2;
 }
@@ -379,6 +416,23 @@ p {
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   background: #0f172a;
+}
+
+.photo-save-state {
+  padding: 9px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.photo-save-state.saved {
+  color: #14532d;
+  background: #dcfce7;
+}
+
+.photo-save-state.warning {
+  color: #92400e;
+  background: #fef3c7;
 }
 
 .photo-metadata {
