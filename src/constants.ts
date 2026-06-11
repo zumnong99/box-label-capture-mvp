@@ -1,5 +1,4 @@
 export const EXPECTED_BOX_COUNT = 8
-export const MAX_CART_COUNT = 9
 export const LAYOUT_TYPE = '2x4'
 export const DEFAULT_CART_NO = '001'
 export const SESSION_SEQUENCE = 1

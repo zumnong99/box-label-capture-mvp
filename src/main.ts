@@ -34,7 +34,6 @@ import {
   setPersistedPhotoRecord,
 } from './photo-store'
 import {
-  canMoveToNextCart,
   captureCurrentBox,
   createSession,
   getActiveCart,
@@ -823,7 +822,6 @@ function render(): void {
   const capturedCount = cart.boxes.filter((box) => box.status === 'captured').length
   const currentStatus = currentBox.status === 'captured' ? '촬영 완료' : '촬영 대기'
   const hasCameraStream = cameraStream !== null
-  const canAddNextCart = canMoveToNextCart(session)
 
   app.innerHTML = `
     <main class="app-shell">
@@ -840,7 +838,6 @@ function render(): void {
             class="quiet-button"
             type="button"
             data-action="next-cart"
-            ${canAddNextCart ? '' : 'disabled'}
           >
             다음 카트
           </button>

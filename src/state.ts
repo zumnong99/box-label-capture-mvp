@@ -3,7 +3,6 @@ import {
   DEFAULT_CART_NO,
   EXPECTED_BOX_COUNT,
   LAYOUT_TYPE,
-  MAX_CART_COUNT,
   SESSION_SEQUENCE,
 } from './constants'
 import { getRelativeImagePath } from './filenames'
@@ -95,10 +94,6 @@ export function isCartComplete(cart: CartState): boolean {
   return cart.boxes.every((box) => box.status === 'captured')
 }
 
-export function canMoveToNextCart(session: SessionState): boolean {
-  return getCartSequence(getActiveCart(session).cartNo) < MAX_CART_COUNT
-}
-
 export function getNextUncapturedBoxNo(
   cart: CartState,
   startAfter: number,
@@ -158,11 +153,6 @@ export function moveToNextBox(session: SessionState): SessionState {
 export function moveToNextCart(session: SessionState): SessionState {
   const activeCart = getActiveCart(session)
   const nextCartSequence = getCartSequence(activeCart.cartNo) + 1
-
-  if (nextCartSequence > MAX_CART_COUNT) {
-    return session
-  }
-
   const nextCartNo = formatCartNo(nextCartSequence)
   const existingCart = session.carts.find((cart) => cart.cartNo === nextCartNo)
 
