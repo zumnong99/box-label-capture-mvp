@@ -36,10 +36,12 @@
 - `manifest.json`, `manifest.csv`, 이미지 파일을 ZIP으로 묶습니다.
 - ZIP 생성 중 진행 상태를 표시합니다.
 - 실패 시 재시도 가능한 상태를 남깁니다.
+- ZIP 다운로드와 Web Share API 공유를 제공합니다.
+- PC OCR 입력 폴더로의 이동은 사용자가 수동으로 처리합니다.
 
 ## Step 6: iPhone Safari real-device test
 
-- 실제 iPhone Safari에서 카메라 권한, 화면 회전, 저장 용량, 긴 세션 동작을 확인합니다.
+- 실제 iPhone Safari에서 카메라 권한, 화면 회전, 저장 용량, ZIP 생성/공유, 긴 세션 동작을 확인합니다.
 - 네트워크가 불안정해도 정적 앱이 촬영 상태를 유지하는지 점검합니다.
 
 ## Step 7: GitHub Pages deployment

@@ -1,6 +1,17 @@
 import './style.css'
 import { startCameraPreview, stopCameraPreview } from './camera'
 import { captureVideoFrame } from './capture'
+import {
+  buildSessionZip,
+  canShareFiles,
+  collectExportSummary,
+  downloadBlob,
+  formatExportProgress,
+  shareZipIfSupported,
+  type ExportProgress,
+  type ExportResult,
+  type ExportSummary,
+} from './export-zip'
 import { getImageFilename } from './filenames'
 import {
   buildPersistedPhotoRecord,
@@ -45,7 +56,7 @@ if (!appElement) {
 const app = appElement
 
 let session: SessionState = loadSession()
-let manifestVisible = false
+let exportPanelVisible = false
 let manifestMode: ManifestPreviewMode = 'json'
 let cameraStream: MediaStream | null = null
 let cameraStatusMessage = '카메라 대기 중'
@@ -61,6 +72,12 @@ let photoStorageStatusTone: StatusTone = isIndexedDbSupported()
   : 'warning'
 let photoStorageEstimateMessage = ''
 let photoRestoreCompleted = false
+let exportSummary: ExportSummary | null = null
+let exportResult: ExportResult | null = null
+let exportProgress: ExportProgress | null = null
+let exportIsBuilding = false
+let exportStatusMessage = ''
+let exportStatusTone: StatusTone = 'idle'
 
 function escapeHtml(value: string): string {
   return value
@@ -121,6 +138,17 @@ function formatStorageEstimate(usage?: number, quota?: number): string {
   }
 
   return `저장소 사용량 약 ${formatFileSize(usage)} / ${formatFileSize(quota)}`
+}
+
+function getLargeExportWarning(summary: ExportSummary): string {
+  const largePhotoCount = summary.photosAvailable >= 24
+  const largePhotoSize = summary.totalPhotoSizeBytes >= 100 * 1024 * 1024
+
+  if (!largePhotoCount && !largePhotoSize) {
+    return ''
+  }
+
+  return '사진 수나 용량이 크면 iPhone에서 ZIP 생성이 느리거나 실패할 수 있습니다. 카트 수가 많으면 중간 내보내기를 권장합니다.'
 }
 
 function formatTimestamp(value: string | null): string {
@@ -185,14 +213,42 @@ function renderBoxGrid(): string {
 }
 
 function renderManifestPanel(): string {
-  if (!manifestVisible) {
+  if (!exportPanelVisible) {
     return ''
   }
 
+  const summary = exportSummary
+  const progressText = exportProgress
+    ? formatExportProgress(exportProgress)
+    : exportStatusMessage || '세션 내보내기를 준비합니다.'
+  const incompleteCarts =
+    summary && summary.incompleteCartNos.length > 0
+      ? summary.incompleteCartNos.join(', ')
+      : '없음'
+  const noPhotosWarning =
+    summary && summary.photosAvailable === 0
+      ? '<p class="export-warning">내보낼 사진이 없습니다.</p>'
+      : ''
+  const incompleteWarning =
+    summary && summary.incompleteCartNos.length > 0
+      ? '<p class="export-warning">미완료 카트가 있습니다. 그래도 내보낼 수 있습니다.</p>'
+      : ''
+  const largeExportWarning = summary ? getLargeExportWarning(summary) : ''
+  const shareSupported = exportResult
+    ? canShareFiles(
+        new File([exportResult.blob], exportResult.fileName, {
+          type: 'application/zip',
+        }),
+      )
+    : false
+
   return `
-    <section class="manifest-panel" aria-label="매니페스트 미리보기">
+    <section class="manifest-panel" aria-label="세션 내보내기">
       <div class="section-heading">
-        <h2>매니페스트 미리보기</h2>
+        <div>
+          <h2>세션 내보내기</h2>
+          <p>${session.sessionId}</p>
+        </div>
         <div class="segmented-control" aria-label="매니페스트 형식">
           <button
             class="${manifestMode === 'json' ? 'is-selected' : ''}"
@@ -210,6 +266,79 @@ function renderManifestPanel(): string {
           </button>
         </div>
       </div>
+      <div class="export-status ${exportStatusTone}" role="status">
+        <strong>${escapeHtml(progressText)}</strong>
+        ${
+          exportResult
+            ? `<span>ZIP 파일명: ${escapeHtml(exportResult.fileName)}</span>`
+            : summary
+              ? `<span>ZIP 파일명: ${escapeHtml(summary.zipFileName)}</span>`
+              : ''
+        }
+      </div>
+      ${
+        summary
+          ? `
+            <dl class="export-summary">
+              <div>
+                <dt>카트 수</dt>
+                <dd>${summary.totalCarts}</dd>
+              </div>
+              <div>
+                <dt>예상 박스</dt>
+                <dd>${summary.totalExpectedBoxes}</dd>
+              </div>
+              <div>
+                <dt>촬영 완료</dt>
+                <dd>${summary.totalCapturedBoxes}</dd>
+              </div>
+              <div>
+                <dt>저장 사진</dt>
+                <dd>${summary.photosAvailable}</dd>
+              </div>
+              <div>
+                <dt>누락 사진</dt>
+                <dd>${summary.missingPhotos}</dd>
+              </div>
+              <div>
+                <dt>사진 용량</dt>
+                <dd>${formatFileSize(summary.totalPhotoSizeBytes)}</dd>
+              </div>
+              <div>
+                <dt>미완료 카트</dt>
+                <dd>${escapeHtml(incompleteCarts)}</dd>
+              </div>
+            </dl>
+          `
+          : '<p class="export-empty">내보내기 요약을 계산하는 중입니다.</p>'
+      }
+      ${noPhotosWarning}
+      ${incompleteWarning}
+      ${
+        largeExportWarning
+          ? `<p class="export-warning">${largeExportWarning}</p>`
+          : ''
+      }
+      ${
+        exportResult
+          ? `
+            <div class="export-actions">
+              <button type="button" data-action="download-zip">ZIP 다운로드</button>
+              <button
+                type="button"
+                data-action="share-zip"
+                ${shareSupported ? '' : 'disabled'}
+              >
+                ${
+                  shareSupported
+                    ? '공유로 보내기'
+                    : '이 브라우저에서는 파일 공유를 지원하지 않습니다.'
+                }
+              </button>
+            </div>
+          `
+          : ''
+      }
       <pre>${escapeHtml(getManifestPreview())}</pre>
     </section>
   `
@@ -496,13 +625,74 @@ async function resetSession(): Promise<void> {
 
   clearStoredSession()
   clearCapturedImages()
-  manifestVisible = false
+  exportPanelVisible = false
   manifestMode = 'json'
   captureStatusMessage = ''
   captureStatusTone = 'idle'
+  exportSummary = null
+  exportResult = null
+  exportProgress = null
+  exportIsBuilding = false
+  exportStatusMessage = ''
+  exportStatusTone = 'idle'
   photoRestoreCompleted = true
   commitSession(createSession())
   void refreshStorageEstimate()
+}
+
+async function startSessionExport(): Promise<void> {
+  if (exportIsBuilding) {
+    return
+  }
+
+  exportPanelVisible = true
+  exportIsBuilding = true
+  exportResult = null
+  exportProgress = {
+    phase: 'collecting',
+    percent: 0,
+    message: '내보내기 요약을 계산하는 중입니다.',
+  }
+  exportStatusMessage = '내보내기 요약을 계산하는 중입니다.'
+  exportStatusTone = 'loading'
+  render()
+
+  try {
+    const summary = await collectExportSummary(session)
+    exportSummary = summary
+
+    if (summary.photosAvailable === 0) {
+      exportIsBuilding = false
+      exportProgress = null
+      exportStatusMessage = '내보낼 사진이 없습니다.'
+      exportStatusTone = 'warning'
+      render()
+      return
+    }
+
+    exportResult = await buildSessionZip(session, (progress) => {
+      exportProgress = progress
+      exportStatusMessage = progress.message
+      exportStatusTone =
+        progress.phase === 'ready'
+          ? 'running'
+          : progress.phase === 'error'
+            ? 'error'
+            : 'loading'
+      render()
+    })
+    exportIsBuilding = false
+    exportStatusMessage = 'ZIP 파일을 생성했습니다.'
+    exportStatusTone = 'running'
+    render()
+  } catch (error) {
+    console.error('Session ZIP export failed', error)
+    exportIsBuilding = false
+    exportStatusMessage =
+      'ZIP 생성 중 오류가 발생했습니다. 세션을 나누어 내보내는 방식을 권장합니다.'
+    exportStatusTone = 'error'
+    render()
+  }
 }
 
 function render(): void {
@@ -605,7 +795,13 @@ function render(): void {
           다음 박스
         </button>
         <button type="button" data-action="cart-complete">카트 완료</button>
-        <button type="button" data-action="export">세션 내보내기</button>
+        <button
+          type="button"
+          data-action="export"
+          ${exportIsBuilding ? 'disabled' : ''}
+        >
+          세션 내보내기
+        </button>
       </section>
 
       ${renderPhotoPreview()}
@@ -692,8 +888,52 @@ function bindEvents(): void {
     })
 
   app.querySelector('[data-action="export"]')?.addEventListener('click', () => {
-    manifestVisible = true
-    render()
+    void startSessionExport()
+  })
+
+  app
+    .querySelector('[data-action="download-zip"]')
+    ?.addEventListener('click', () => {
+      if (!exportResult) {
+        return
+      }
+
+      try {
+        downloadBlob(exportResult.blob, exportResult.fileName)
+        exportStatusMessage = 'ZIP 다운로드를 시작했습니다.'
+        exportStatusTone = 'running'
+        render()
+      } catch (error) {
+        console.error('ZIP download failed', error)
+        exportStatusMessage = 'ZIP 다운로드에 실패했습니다.'
+        exportStatusTone = 'error'
+        render()
+      }
+    })
+
+  app.querySelector('[data-action="share-zip"]')?.addEventListener('click', () => {
+    if (!exportResult) {
+      return
+    }
+
+    void shareZipIfSupported(exportResult.blob, exportResult.fileName)
+      .then((shared) => {
+        exportStatusMessage = shared
+          ? '공유를 완료했습니다.'
+          : '이 브라우저에서는 파일 공유를 지원하지 않습니다.'
+        exportStatusTone = shared ? 'running' : 'warning'
+        render()
+      })
+      .catch((error: unknown) => {
+        console.error('ZIP share failed', error)
+        const errorName = error instanceof DOMException ? error.name : ''
+        exportStatusMessage =
+          errorName === 'AbortError'
+            ? '공유가 취소되었습니다.'
+            : 'ZIP 공유에 실패했습니다.'
+        exportStatusTone = errorName === 'AbortError' ? 'warning' : 'error'
+        render()
+      })
   })
 
   app.querySelector('[data-action="reset"]')?.addEventListener('click', () => {

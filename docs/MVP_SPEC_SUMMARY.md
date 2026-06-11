@@ -36,7 +36,7 @@ cart_001/cart_001_box_08.jpg
 - `manifest.json`은 세션, 카트, 박스 목록을 계층 구조로 표현합니다.
 - `manifest.csv`는 박스별 행으로 펼쳐서 표현합니다.
 - 공통 필드는 세션 ID, 카트 번호, 박스 번호, 행, 열, 촬영 상태, 재촬영 횟수, 파일 경로, 촬영 시각, 이미지 크기, 파일 크기, MIME type입니다.
-- 첫 MVP는 ZIP 파일을 생성하지 않고 화면 미리보기만 제공합니다.
+- ZIP에는 모든 박스 metadata가 담긴 `manifest.json`과 `manifest.csv`가 포함됩니다.
 
 ## 카메라 미리보기 규칙
 
@@ -52,10 +52,20 @@ cart_001/cart_001_box_08.jpg
 - 새로고침 후에는 현재 세션의 IndexedDB 사진을 다시 읽어 object URL을 재생성합니다.
 - IndexedDB에 사진이 있지만 localStorage 상태가 촬영 완료가 아니면 삭제하지 않고, 해당 박스 선택 시 표시할 수 있게 남깁니다.
 
+## ZIP 내보내기 규칙
+
+- ZIP 파일명은 `{session_id}.zip`입니다.
+- ZIP 내부 루트 폴더명은 `session_id`와 같습니다.
+- ZIP에는 `{session_id}/manifest.json`, `{session_id}/manifest.csv`, 실제 IndexedDB 사진 파일만 포함합니다.
+- 사진 내부 경로는 `cart_001/cart_001_box_01.jpg` 형식을 유지합니다.
+- 미완료 카트가 있어도 경고만 표시하고 내보내기를 허용합니다.
+- 사진이 없으면 ZIP 생성을 막고 `내보낼 사진이 없습니다.`를 표시합니다.
+- ZIP 생성 결과는 사용자가 직접 다운로드하거나 공유해야 합니다.
+
 ## 제외 기능
 
 - OCR
-- JSZip 내보내기
-- DB 저장
+- 서버 DB 저장
 - 백엔드 업로드
+- PC 자동 저장
 - 로그인
