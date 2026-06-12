@@ -16,7 +16,8 @@ export type CapturedImage = {
 }
 
 export const DEFAULT_CAPTURE_OPTIONS: CaptureOptions = {
-  maxLongEdge: 2400,
+  // 스트림이 4:3 고해상도(최대 4032)로 협상될 수 있어 깎지 않도록 여유
+  maxLongEdge: 4096,
   jpegQuality: 0.92,
 }
 

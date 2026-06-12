@@ -21,12 +21,16 @@ export interface CameraStartFailure {
 
 export type CameraStartResult = CameraStartSuccess | CameraStartFailure
 
+// ideal 은 협상 힌트라 높게 요청해도 안전: 기기가 지원하는 가장 가까운
+// 프리셋으로 떨어진다 (예: 4032x3024 -> 3088x2320 -> 1920x1080).
+// 4:3 비율은 아이폰 센서 비율이라 고해상도 프리셋을 받을 확률이 가장 높다.
+// 라벨 OCR 은 픽셀이 깡패: 1080p(2MP)는 라벨이 작게 찍히면 판독 한계선.
 const REAR_CAMERA_CONSTRAINTS: MediaStreamConstraints = {
   audio: false,
   video: {
     facingMode: { ideal: 'environment' },
-    width: { ideal: 1920 },
-    height: { ideal: 1080 },
+    width: { ideal: 4032 },
+    height: { ideal: 3024 },
   },
 }
 
@@ -107,6 +111,16 @@ function shouldTryFallback(error: unknown): boolean {
   return error.name !== 'NotAllowedError' && error.name !== 'SecurityError'
 }
 
+function describeStreamResolution(stream: MediaStream): string {
+  const settings = stream.getVideoTracks()[0]?.getSettings()
+
+  if (settings?.width && settings?.height) {
+    return ` (${settings.width}×${settings.height})`
+  }
+
+  return ''
+}
+
 async function playPreview(
   videoElement: HTMLVideoElement,
   stream: MediaStream,
@@ -154,7 +168,7 @@ export async function startCameraPreview(
     return {
       ok: true,
       stream,
-      message: '카메라 미리보기 실행 중',
+      message: `카메라 미리보기 실행 중${describeStreamResolution(stream)}`,
     }
   } catch (preferredError) {
     console.error('Rear camera preview failed', preferredError)
@@ -177,7 +191,7 @@ export async function startCameraPreview(
       return {
         ok: true,
         stream,
-        message: '카메라 미리보기 실행 중',
+        message: `카메라 미리보기 실행 중${describeStreamResolution(stream)}`,
       }
     } catch (fallbackError) {
       console.error('Camera preview fallback failed', fallbackError)
