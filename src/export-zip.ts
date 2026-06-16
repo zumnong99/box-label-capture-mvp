@@ -1,6 +1,7 @@
 import JSZip from 'jszip'
 import { getPhotosForSession } from './indexed-photo-store'
 import { buildManifest, buildManifestCsv } from './manifest'
+import { getZipFileName } from './filenames'
 import { getCapturedImageKey } from './photo-keys'
 import type { PersistedPhotoRecord } from './indexed-photo-store'
 import type { SessionState } from './types'
@@ -62,6 +63,7 @@ function sortPhotos(photos: PersistedPhotoRecord[]): PersistedPhotoRecord[] {
 export function buildExportSummary(
   session: SessionState,
   photos: PersistedPhotoRecord[],
+  exportedAt: Date = new Date(),
 ): ExportSummary {
   const photoKeys = new Set(photos.map((photo) => photo.key))
   const capturedBoxKeys = getCapturedBoxKeys(session)
@@ -86,7 +88,7 @@ export function buildExportSummary(
       (total, photo) => total + photo.sizeBytes,
       0,
     ),
-    zipFileName: `${session.sessionId}.zip`,
+    zipFileName: getZipFileName(session.sessionId, exportedAt),
   }
 }
 
@@ -108,8 +110,9 @@ export async function buildSessionZip(
   })
 
   const photos = sortPhotos(await getPhotosForSession(session.sessionId))
-  const summary = buildExportSummary(session, photos)
-  const exportedAt = new Date().toISOString()
+  const exportedAtDate = new Date()
+  const summary = buildExportSummary(session, photos, exportedAtDate)
+  const exportedAt = exportedAtDate.toISOString()
   const zip = new JSZip()
   const rootFolder = zip.folder(session.sessionId)
 
@@ -221,10 +224,11 @@ export async function shareZipIfSupported(
     return false
   }
 
+  // text 필드는 일부 공유 대상(카톡/메일)에서 별도 .txt 첨부나 본문으로
+  // 변환되므로 ZIP만 전달되도록 넣지 않는다.
   await navigator.share({
     files: [file],
     title: fileName,
-    text: '박스 라벨 촬영 세션 ZIP 파일입니다.',
   })
   return true
 }

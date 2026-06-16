@@ -343,14 +343,19 @@ function renderManifestPanel(): string {
       </div>
       <div class="export-status ${exportStatusTone}" role="status">
         <strong>${escapeHtml(progressText)}</strong>
-        ${
-          exportResult
-            ? `<span>ZIP 파일명: ${escapeHtml(exportResult.fileName)}</span>`
-            : summary
-              ? `<span>ZIP 파일명: ${escapeHtml(summary.zipFileName)}</span>`
-              : ''
-        }
       </div>
+      ${
+        exportResult || summary
+          ? `
+            <div class="export-filename">
+              <span>ZIP 파일명</span>
+              <strong>${escapeHtml(
+                exportResult ? exportResult.fileName : summary!.zipFileName,
+              )}</strong>
+            </div>
+          `
+          : ''
+      }
       ${
         summary
           ? `
