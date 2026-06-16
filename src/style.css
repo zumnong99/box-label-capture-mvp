@@ -81,8 +81,9 @@ p {
 
 .session-header h1 {
   color: #0f172a;
-  font-size: 28px;
-  line-height: 1.1;
+  font-size: 20px;
+  line-height: 1.2;
+  word-break: break-all;
 }
 
 .quiet-button {
@@ -96,7 +97,7 @@ p {
 
 .header-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(74px, 1fr));
+  grid-template-columns: minmax(74px, auto);
   gap: 8px;
 }
 
@@ -118,8 +119,14 @@ p {
   background: #ffffff;
 }
 
-.status-strip div:first-child {
-  grid-column: 1 / -1;
+.status-next-cart {
+  min-height: 64px;
+  border: 1px solid #0f766e;
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 900;
+  background: #0f766e;
 }
 
 .status-strip span {

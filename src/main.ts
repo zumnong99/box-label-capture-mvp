@@ -828,28 +828,17 @@ function render(): void {
     <main class="app-shell">
       <header class="session-header">
         <div>
-          <p class="eyebrow">박스 라벨 촬영 관리</p>
-          <h1>카트 ${cart.cartNo}</h1>
+          <p class="eyebrow">영오 라벨 촬영</p>
+          <h1>${escapeHtml(session.sessionId)}</h1>
         </div>
         <div class="header-actions">
           <button class="quiet-button" type="button" data-action="reset">
             초기화
           </button>
-          <button
-            class="quiet-button"
-            type="button"
-            data-action="next-cart"
-          >
-            다음 카트
-          </button>
         </div>
       </header>
 
       <section class="status-strip" aria-label="세션 상태">
-        <div>
-          <span>세션</span>
-          <strong>${session.sessionId}</strong>
-        </div>
         <div>
           <span>카트 번호</span>
           <strong>${cart.cartNo}</strong>
@@ -862,6 +851,9 @@ function render(): void {
           <span>이 세션 촬영</span>
           <strong>${escapeHtml(sessionSavedPhotos)}</strong>
         </div>
+        <button class="status-next-cart" type="button" data-action="next-cart">
+          다음 카트
+        </button>
       </section>
 
       <section class="camera-panel" aria-label="카메라 미리보기">
