@@ -819,6 +819,10 @@ function render(): void {
   const capturedCount = cart.boxes.filter((box) => box.status === 'captured').length
   const currentStatus = currentBox.status === 'captured' ? '촬영 완료' : '촬영 대기'
   const hasCameraStream = cameraStream !== null
+  // 카트별 진행과 별개로, 이 세션에서 IndexedDB에 실제 저장된 사진 수.
+  // 촬영이 저장에 성공해야만 올라가므로 화면이 멈췄을 때 실제 촬영 여부 확인용.
+  const sessionSavedPhotos =
+    diagnosticsPhotoCount !== null ? `${diagnosticsPhotoCount}장` : '확인 중'
 
   app.innerHTML = `
     <main class="app-shell">
@@ -853,6 +857,10 @@ function render(): void {
         <div>
           <span>박스 진행</span>
           <strong>현재 ${currentBox.boxNo}번 · ${capturedCount}개 완료</strong>
+        </div>
+        <div>
+          <span>이 세션 촬영</span>
+          <strong>${escapeHtml(sessionSavedPhotos)}</strong>
         </div>
       </section>
 
