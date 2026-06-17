@@ -71,12 +71,15 @@ export async function captureVideoFrame(
   videoElement: HTMLVideoElement,
   options: CaptureOptions = DEFAULT_CAPTURE_OPTIONS,
 ): Promise<CapturedImage> {
-  const originalWidth = videoElement.videoWidth
-  const originalHeight = videoElement.videoHeight
-
-  if (originalWidth === 0 || originalHeight === 0) {
+  if (videoElement.videoWidth === 0 || videoElement.videoHeight === 0) {
     throw new Error('카메라 영상이 아직 준비되지 않았습니다')
   }
+
+  // 셔터 시점의 프레임을 즉시 스냅샷으로 동결한다. 이후 인코딩이 느려도
+  // 이 ImageBitmap 은 immutable 이라 캡처 지연/흔들림과 무관하게 보존된다.
+  const frame = await createImageBitmap(videoElement)
+  const originalWidth = frame.width
+  const originalHeight = frame.height
 
   const { width, height } = resizeDimensions(
     originalWidth,
@@ -90,10 +93,12 @@ export async function captureVideoFrame(
   const context = canvas.getContext('2d')
 
   if (!context) {
+    frame.close()
     throw new Error('캔버스 작업 영역을 만들 수 없습니다')
   }
 
-  context.drawImage(videoElement, 0, 0, width, height)
+  context.drawImage(frame, 0, 0, width, height)
+  frame.close()
 
   const blob = await canvasToJpegBlob(canvas, options.jpegQuality)
   const objectUrl = createObjectUrl(blob)

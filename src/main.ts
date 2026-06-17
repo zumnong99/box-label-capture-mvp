@@ -552,6 +552,10 @@ function syncCameraVideo(): void {
     videoElement.play().catch((error: unknown) => {
       console.error('Camera preview playback failed', error)
     })
+  } else if (!cameraStream && videoElement.srcObject) {
+    // persistent video 라 노드가 재생성되지 않으므로, 카메라를 멈추면
+    // 마지막 프레임이 빈 화면 오버레이 뒤에 남지 않도록 직접 비운다.
+    videoElement.srcObject = null
   }
 }
 
@@ -813,19 +817,107 @@ async function startSessionExport(): Promise<void> {
   }
 }
 
+// 카메라 패널은 video element(stateful media element)를 품고 있어 매 렌더마다
+// 재생성하면 stream 재연결 + play() 동안 마지막 프레임이 멈춰(stale frame) 잔상이
+// 생긴다. 그래서 앱 셸을 한 번만 만들고, 카메라 패널은 persistent 영역으로 둔 뒤
+// render()는 상/하단 동적 영역만 innerHTML 로 교체한다.
+let shellReady = false
+
+function buildShell(): void {
+  app.innerHTML = `
+    <main class="app-shell">
+      <div data-region="top"></div>
+
+      <section class="camera-panel" aria-label="카메라 미리보기">
+        <div class="camera-preview-frame">
+          <video
+            class="camera-preview"
+            data-camera-preview
+            playsinline
+            autoplay
+            muted
+          ></video>
+          <div class="camera-empty" data-camera-empty>
+            카메라 미리보기
+          </div>
+          <div class="label-guide" aria-hidden="true"></div>
+        </div>
+        <div class="camera-status" data-camera-status role="status"></div>
+        <div class="camera-capture-bar">
+          <button class="primary-action" type="button" data-action="capture">
+            촬영
+          </button>
+          <button type="button" data-action="retake">
+            재촬영
+          </button>
+        </div>
+        <div class="camera-controls">
+          <button type="button" data-action="camera-start">
+            카메라 시작
+          </button>
+          <button type="button" data-action="camera-stop">
+            카메라 중지
+          </button>
+        </div>
+        <p class="camera-instruction">라벨 전체가 정사각형 안에 들어오게 촬영</p>
+      </section>
+
+      <div data-region="bottom"></div>
+    </main>
+  `
+
+  bindCameraEvents()
+  shellReady = true
+}
+
+function updateCameraPanel(): void {
+  const hasCameraStream = cameraStream !== null
+
+  const emptyEl = app.querySelector<HTMLElement>('[data-camera-empty]')
+  if (emptyEl) {
+    emptyEl.classList.toggle('is-hidden', hasCameraStream)
+  }
+
+  const statusEl = app.querySelector<HTMLElement>('[data-camera-status]')
+  if (statusEl) {
+    statusEl.className = `camera-status ${cameraStatusTone}`
+    statusEl.textContent = cameraStatusMessage
+  }
+
+  const setDisabled = (action: string, disabled: boolean): void => {
+    const button = app.querySelector<HTMLButtonElement>(
+      `[data-action="${action}"]`,
+    )
+    if (button) {
+      button.disabled = disabled
+    }
+  }
+
+  setDisabled('capture', !hasCameraStream)
+  setDisabled('retake', !hasCameraStream)
+  setDisabled('camera-start', hasCameraStream || cameraIsStarting)
+  setDisabled('camera-stop', !hasCameraStream)
+}
+
 function render(): void {
+  if (!shellReady) {
+    buildShell()
+  }
+
   const cart = getActiveCart(session)
   const currentBox = getCurrentBox(session)
   const capturedCount = cart.boxes.filter((box) => box.status === 'captured').length
   const currentStatus = currentBox.status === 'captured' ? '촬영 완료' : '촬영 대기'
-  const hasCameraStream = cameraStream !== null
   // 카트별 진행과 별개로, 이 세션에서 IndexedDB에 실제 저장된 사진 수.
   // 촬영이 저장에 성공해야만 올라가므로 화면이 멈췄을 때 실제 촬영 여부 확인용.
   const sessionSavedPhotos =
     diagnosticsPhotoCount !== null ? `${diagnosticsPhotoCount}장` : '확인 중'
 
-  app.innerHTML = `
-    <main class="app-shell">
+  const topRegion = app.querySelector<HTMLElement>('[data-region="top"]')
+  const bottomRegion = app.querySelector<HTMLElement>('[data-region="bottom"]')
+
+  if (topRegion) {
+    topRegion.innerHTML = `
       <header class="session-header">
         <div>
           <p class="eyebrow">영오 라벨 촬영</p>
@@ -855,60 +947,11 @@ function render(): void {
           다음 카트
         </button>
       </section>
+    `
+  }
 
-      <section class="camera-panel" aria-label="카메라 미리보기">
-        <div class="camera-preview-frame">
-          <video
-            class="camera-preview"
-            data-camera-preview
-            playsinline
-            autoplay
-            muted
-          ></video>
-          <div class="camera-empty ${hasCameraStream ? 'is-hidden' : ''}">
-            카메라 미리보기
-          </div>
-          <div class="label-guide" aria-hidden="true"></div>
-        </div>
-        <div class="camera-status ${cameraStatusTone}" role="status">
-          ${cameraStatusMessage}
-        </div>
-        <div class="camera-capture-bar">
-          <button
-            class="primary-action"
-            type="button"
-            data-action="capture"
-            ${hasCameraStream ? '' : 'disabled'}
-          >
-            촬영
-          </button>
-          <button
-            type="button"
-            data-action="retake"
-            ${hasCameraStream ? '' : 'disabled'}
-          >
-            재촬영
-          </button>
-        </div>
-        <div class="camera-controls">
-          <button
-            type="button"
-            data-action="camera-start"
-            ${hasCameraStream || cameraIsStarting ? 'disabled' : ''}
-          >
-            카메라 시작
-          </button>
-          <button
-            type="button"
-            data-action="camera-stop"
-            ${hasCameraStream ? '' : 'disabled'}
-          >
-            카메라 중지
-          </button>
-        </div>
-        <p class="camera-instruction">라벨 전체가 정사각형 안에 들어오게 촬영</p>
-      </section>
-
+  if (bottomRegion) {
+    bottomRegion.innerHTML = `
       <section class="action-panel" aria-label="촬영 조작">
         <div class="current-box-summary">
           ${currentBox.boxNo}번 ${currentStatus}
@@ -940,14 +983,16 @@ function render(): void {
       ${renderManifestPanel()}
 
       ${renderDiagnosticsPanel()}
-    </main>
-  `
+    `
+  }
 
-  bindEvents()
+  updateCameraPanel()
+  bindDynamicEvents()
   syncCameraVideo()
 }
 
-function bindEvents(): void {
+// 카메라 패널은 persistent 라 버튼도 1회만 바인딩한다.
+function bindCameraEvents(): void {
   app
     .querySelector('[data-action="camera-start"]')
     ?.addEventListener('click', async () => {
@@ -1001,7 +1046,10 @@ function bindEvents(): void {
   app.querySelector('[data-action="retake"]')?.addEventListener('click', () => {
     void captureForCurrentBox('retake')
   })
+}
 
+// 상/하단 영역은 매 렌더마다 innerHTML 로 다시 그려지므로 이벤트도 매번 재바인딩한다.
+function bindDynamicEvents(): void {
   app.querySelector('[data-action="previous"]')?.addEventListener('click', () => {
     commitSession(moveToPreviousBox(session))
   })
