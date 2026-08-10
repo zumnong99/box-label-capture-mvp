@@ -5,7 +5,7 @@ import {
   startCameraPreview,
   stopCameraPreview,
 } from './camera'
-import { captureVideoFrame } from './capture'
+import { captureCameraImage } from './capture'
 import {
   buildSessionZip,
   canShareFiles,
@@ -67,6 +67,7 @@ let cameraStream: MediaStream | null = null
 let cameraStatusMessage = '카메라 대기 중'
 let cameraStatusTone: StatusTone = 'idle'
 let cameraIsStarting = false
+let captureIsRunning = false
 let captureStatusMessage = ''
 let captureStatusTone: StatusTone = 'idle'
 let photoStorageStatusMessage = isIndexedDbSupported()
@@ -266,7 +267,7 @@ function getLargeExportWarning(summary: ExportSummary): string {
     return ''
   }
 
-  return '사진 수나 용량이 크면 iPhone에서 ZIP 생성이 느리거나 실패할 수 있습니다. 카트 수가 많으면 중간 내보내기를 권장합니다.'
+  return '사진 수나 용량이 크면 휴대폰에서 ZIP 생성이 느리거나 실패할 수 있습니다. 카트 수가 많으면 중간 내보내기를 권장합니다.'
 }
 
 function formatTimestamp(value: string | null): string {
@@ -403,18 +404,17 @@ function renderManifestPanel(): string {
         exportResult
           ? `
             <div class="export-actions">
-              <button type="button" data-action="download-zip">ZIP 다운로드</button>
               <button
                 type="button"
-                data-action="share-zip"
-                ${shareSupported ? '' : 'disabled'}
+                data-action="save-or-share-zip"
               >
                 ${
                   shareSupported
-                    ? '공유로 보내기'
-                    : '이 브라우저에서는 파일 공유를 지원하지 않습니다.'
+                    ? '기기에 저장 · 공유'
+                    : '기기에 ZIP 저장'
                 }
               </button>
+              <button type="button" data-action="download-zip">ZIP 다운로드</button>
             </div>
           `
           : ''
@@ -580,7 +580,7 @@ async function captureForCurrentBox(mode: 'capture' | 'retake'): Promise<void> {
   const videoElement =
     app.querySelector<HTMLVideoElement>('[data-camera-preview]')
 
-  if (!cameraStream || !videoElement) {
+  if (!cameraStream || !videoElement || captureIsRunning) {
     captureStatusMessage =
       mode === 'retake'
         ? '재촬영하려면 카메라 미리보기를 먼저 시작하세요.'
@@ -590,8 +590,13 @@ async function captureForCurrentBox(mode: 'capture' | 'retake'): Promise<void> {
     return
   }
 
+  captureIsRunning = true
+  captureStatusMessage = '폴드8 고화질 사진을 처리하는 중입니다.'
+  captureStatusTone = 'loading'
+  render()
+
   try {
-    const image = await captureVideoFrame(videoElement)
+    const image = await captureCameraImage(videoElement, cameraStream)
     const key = getCapturedImageKey(session.sessionId, cart.cartNo, currentBox.boxNo)
     const nextRetakeCount =
       mode === 'retake' && currentBox.status === 'captured'
@@ -648,6 +653,9 @@ async function captureForCurrentBox(mode: 'capture' | 'retake'): Promise<void> {
     console.error('Image capture failed', error)
     captureStatusMessage = getCaptureErrorMessage(error)
     captureStatusTone = 'error'
+    render()
+  } finally {
+    captureIsRunning = false
     render()
   }
 }
@@ -893,8 +901,8 @@ function updateCameraPanel(): void {
     }
   }
 
-  setDisabled('capture', !hasCameraStream)
-  setDisabled('retake', !hasCameraStream)
+  setDisabled('capture', !hasCameraStream || captureIsRunning)
+  setDisabled('retake', !hasCameraStream || captureIsRunning)
   setDisabled('camera-start', hasCameraStream || cameraIsStarting)
   setDisabled('camera-stop', !hasCameraStream)
 }
@@ -1088,30 +1096,40 @@ function bindDynamicEvents(): void {
       }
     })
 
-  app.querySelector('[data-action="share-zip"]')?.addEventListener('click', () => {
-    if (!exportResult) {
-      return
-    }
+  app
+    .querySelector('[data-action="save-or-share-zip"]')
+    ?.addEventListener('click', () => {
+      if (!exportResult) {
+        return
+      }
 
-    void shareZipIfSupported(exportResult.blob, exportResult.fileName)
-      .then((shared) => {
-        exportStatusMessage = shared
-          ? '공유를 완료했습니다.'
-          : '이 브라우저에서는 파일 공유를 지원하지 않습니다.'
-        exportStatusTone = shared ? 'running' : 'warning'
-        render()
-      })
-      .catch((error: unknown) => {
-        console.error('ZIP share failed', error)
-        const errorName = error instanceof DOMException ? error.name : ''
-        exportStatusMessage =
-          errorName === 'AbortError'
-            ? '공유가 취소되었습니다.'
-            : 'ZIP 공유에 실패했습니다.'
-        exportStatusTone = errorName === 'AbortError' ? 'warning' : 'error'
-        render()
-      })
-  })
+      void shareZipIfSupported(exportResult.blob, exportResult.fileName)
+        .then((shared) => {
+          if (shared) {
+            exportStatusMessage = '공유를 완료했습니다.'
+          } else {
+            downloadBlob(exportResult!.blob, exportResult!.fileName)
+            exportStatusMessage =
+              '공유 미지원 브라우저라 ZIP 다운로드를 시작했습니다.'
+          }
+          exportStatusTone = 'running'
+          render()
+        })
+        .catch((error: unknown) => {
+          console.error('ZIP share failed', error)
+          const errorName = error instanceof DOMException ? error.name : ''
+
+          if (errorName === 'AbortError') {
+            exportStatusMessage = '공유가 취소되었습니다.'
+            exportStatusTone = 'warning'
+          } else {
+            downloadBlob(exportResult!.blob, exportResult!.fileName)
+            exportStatusMessage = '공유 대신 ZIP 다운로드를 시작했습니다.'
+            exportStatusTone = 'running'
+          }
+          render()
+        })
+    })
 
   app.querySelector('[data-action="reset"]')?.addEventListener('click', () => {
     void resetSession()

@@ -154,7 +154,9 @@ p {
 
 .camera-preview-frame {
   position: relative;
-  min-height: 360px;
+  width: 100%;
+  min-height: 0;
+  aspect-ratio: 3 / 4;
   background:
     linear-gradient(135deg, rgba(37, 99, 235, 0.25), transparent 45%),
     linear-gradient(45deg, rgba(15, 118, 110, 0.24), transparent 50%),
@@ -167,7 +169,7 @@ p {
   width: 100%;
   height: 100%;
   display: block;
-  object-fit: cover;
+  object-fit: contain;
   background: #111827;
 }
 
@@ -462,6 +464,11 @@ p {
 .capture-status.running {
   color: #14532d;
   background: #dcfce7;
+}
+
+.capture-status.loading {
+  color: #92400e;
+  background: #fef3c7;
 }
 
 .capture-status.warning {
@@ -769,8 +776,12 @@ p {
   background: #ffffff;
 }
 
-@media (min-width: 430px) {
-  .camera-preview-frame {
-    min-height: 420px;
+@media (min-width: 600px) {
+  .app-shell {
+    width: min(100%, 600px);
+  }
+
+  .label-guide {
+    width: min(70%, 320px);
   }
 }

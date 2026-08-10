@@ -23,7 +23,7 @@ export type CameraStartResult = CameraStartSuccess | CameraStartFailure
 
 // ideal 은 협상 힌트라 높게 요청해도 안전: 기기가 지원하는 가장 가까운
 // 프리셋으로 떨어진다 (예: 4032x3024 -> 3088x2320 -> 1920x1080).
-// 4:3 비율은 아이폰 센서 비율이라 고해상도 프리셋을 받을 확률이 가장 높다.
+// 4:3은 Fold8 광각 센서와 기존 iPhone 모두에서 고해상도 프리셋을 받기 좋다.
 // 라벨 OCR 은 픽셀이 깡패: 1080p(2MP)는 라벨이 작게 찍히면 판독 한계선.
 const REAR_CAMERA_CONSTRAINTS: MediaStreamConstraints = {
   audio: false,
@@ -31,6 +31,8 @@ const REAR_CAMERA_CONSTRAINTS: MediaStreamConstraints = {
     facingMode: { ideal: 'environment' },
     width: { ideal: 4032 },
     height: { ideal: 3024 },
+    aspectRatio: { ideal: 4 / 3 },
+    frameRate: { ideal: 30, max: 30 },
   },
 }
 
@@ -121,6 +123,72 @@ function describeStreamResolution(stream: MediaStream): string {
   return ''
 }
 
+type FoldableCameraCapabilities = MediaTrackCapabilities & {
+  zoom?: MediaSettingsRange
+  focusMode?: string[]
+  exposureMode?: string[]
+}
+
+type FoldableCameraConstraintSet = MediaTrackConstraintSet & {
+  zoom?: number
+  focusMode?: string
+  exposureMode?: string
+}
+
+async function optimizeRearCamera(stream: MediaStream): Promise<void> {
+  const track = stream.getVideoTracks()[0]
+
+  if (!track?.getCapabilities) {
+    return
+  }
+
+  try {
+    const capabilities = track.getCapabilities() as FoldableCameraCapabilities
+    const settings: FoldableCameraConstraintSet = {}
+
+    // Fold8의 논리 후면 카메라는 0.5배 초광각과 1배 광각을 함께 노출할 수 있다.
+    // 라벨 촬영은 왜곡과 가장자리 흐림이 적은 1배 광각을 우선한다.
+    const minimumZoom = capabilities.zoom?.min
+    const maximumZoom = capabilities.zoom?.max
+
+    if (
+      typeof minimumZoom === 'number' &&
+      typeof maximumZoom === 'number' &&
+      minimumZoom <= 1 &&
+      maximumZoom >= 1
+    ) {
+      settings.zoom = 1
+    }
+
+    if (capabilities.focusMode?.includes('continuous')) {
+      settings.focusMode = 'continuous'
+    }
+
+    if (capabilities.exposureMode?.includes('continuous')) {
+      settings.exposureMode = 'continuous'
+    }
+
+    if (Object.keys(settings).length > 0) {
+      await track.applyConstraints({
+        advanced: [settings],
+      } as MediaTrackConstraints)
+    }
+  } catch (error) {
+    // 브라우저마다 지원 제약이 달라 실패해도 기본 후면 카메라는 유지한다.
+    console.warn('Rear camera optimization was not applied', error)
+  }
+}
+
+function syncPreviewAspectRatio(videoElement: HTMLVideoElement): void {
+  const frame = videoElement.parentElement
+
+  if (!frame || videoElement.videoWidth === 0 || videoElement.videoHeight === 0) {
+    return
+  }
+
+  frame.style.aspectRatio = `${videoElement.videoWidth} / ${videoElement.videoHeight}`
+}
+
 async function playPreview(
   videoElement: HTMLVideoElement,
   stream: MediaStream,
@@ -128,8 +196,10 @@ async function playPreview(
   videoElement.autoplay = true
   videoElement.muted = true
   videoElement.playsInline = true
+  videoElement.onresize = () => syncPreviewAspectRatio(videoElement)
   videoElement.srcObject = stream
   await videoElement.play()
+  syncPreviewAspectRatio(videoElement)
 }
 
 export async function startCameraPreview(
@@ -159,6 +229,7 @@ export async function startCameraPreview(
       REAR_CAMERA_CONSTRAINTS,
     )
     try {
+      await optimizeRearCamera(stream)
       await playPreview(videoElement, stream)
     } catch (playError) {
       stopCameraPreview(stream)

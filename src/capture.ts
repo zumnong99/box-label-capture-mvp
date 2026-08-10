@@ -18,7 +18,80 @@ export type CapturedImage = {
 export const DEFAULT_CAPTURE_OPTIONS: CaptureOptions = {
   // 스트림이 4:3 고해상도(최대 4032)로 협상될 수 있어 깎지 않도록 여유
   maxLongEdge: 4096,
-  jpegQuality: 0.92,
+  jpegQuality: 0.96,
+}
+
+type PhotoSettings = {
+  imageWidth?: number
+  imageHeight?: number
+}
+
+type PhotoCapabilities = {
+  imageWidth?: MediaSettingsRange
+  imageHeight?: MediaSettingsRange
+}
+
+type ImageCaptureApi = {
+  getPhotoCapabilities?: () => Promise<PhotoCapabilities>
+  takePhoto: (settings?: PhotoSettings) => Promise<Blob>
+}
+
+type ImageCaptureConstructor = new (track: MediaStreamTrack) => ImageCaptureApi
+
+function clampToRange(value: number, range?: MediaSettingsRange): number {
+  const minimum = range?.min
+  const maximum = range?.max
+
+  if (typeof minimum !== 'number' || typeof maximum !== 'number') {
+    return Math.max(1, Math.round(value))
+  }
+
+  const clamped = Math.min(maximum, Math.max(minimum, value))
+  const step = range?.step || 1
+  const stepped = minimum + Math.round((clamped - minimum) / step) * step
+
+  return Math.min(maximum, Math.max(minimum, Math.round(stepped)))
+}
+
+async function captureProcessedStill(
+  stream: MediaStream,
+): Promise<ImageBitmap | null> {
+  const ImageCaptureClass = (
+    globalThis as typeof globalThis & { ImageCapture?: ImageCaptureConstructor }
+  ).ImageCapture
+  const track = stream.getVideoTracks()[0]
+
+  if (!ImageCaptureClass || !track || track.readyState !== 'live') {
+    return null
+  }
+
+  try {
+    const imageCapture = new ImageCaptureClass(track)
+    const capabilities = imageCapture.getPhotoCapabilities
+      ? await imageCapture.getPhotoCapabilities()
+      : null
+    const trackSettings = track.getSettings()
+    const capabilityWidth = capabilities?.imageWidth?.max
+    const capabilityHeight = capabilities?.imageHeight?.max
+    const referenceWidth = capabilityWidth ?? trackSettings.width ?? 4032
+    const referenceHeight = capabilityHeight ?? trackSettings.height ?? 3024
+    const longEdge = Math.min(Math.max(referenceWidth, referenceHeight), 4032)
+    const shortEdge = Math.round(longEdge * 0.75)
+    const sensorIsLandscape = referenceWidth >= referenceHeight
+    const requestedWidth = sensorIsLandscape ? longEdge : shortEdge
+    const requestedHeight = sensorIsLandscape ? shortEdge : longEdge
+    const blob = await imageCapture.takePhoto({
+      imageWidth: clampToRange(requestedWidth, capabilities?.imageWidth),
+      imageHeight: clampToRange(requestedHeight, capabilities?.imageHeight),
+    })
+
+    return await createImageBitmap(blob, { imageOrientation: 'from-image' })
+  } catch (error) {
+    // 부분 지원 브라우저나 제조사 카메라가 PhotoSettings를 거부하면
+    // 같은 고해상도 스트림 프레임으로 안전하게 폴백한다.
+    console.warn('Processed still capture failed; using video frame', error)
+    return null
+  }
 }
 
 export function resizeDimensions(
@@ -67,17 +140,21 @@ export function createObjectUrl(blob: Blob): string {
   return URL.createObjectURL(blob)
 }
 
-export async function captureVideoFrame(
+export async function captureCameraImage(
   videoElement: HTMLVideoElement,
+  stream: MediaStream,
   options: CaptureOptions = DEFAULT_CAPTURE_OPTIONS,
 ): Promise<CapturedImage> {
   if (videoElement.videoWidth === 0 || videoElement.videoHeight === 0) {
     throw new Error('카메라 영상이 아직 준비되지 않았습니다')
   }
 
-  // 셔터 시점의 프레임을 즉시 스냅샷으로 동결한다. 이후 인코딩이 느려도
-  // 이 ImageBitmap 은 immutable 이라 캡처 지연/흔들림과 무관하게 보존된다.
-  const frame = await createImageBitmap(videoElement)
+  // Android/Chromium에서는 동영상 프레임보다 제조사 ISP의 노이즈 제거와
+  // 정지사진 처리가 적용되는 ImageCapture를 우선한다. Safari는 기존 프레임
+  // 캡처로 폴백하므로 iPhone 호환성도 유지된다.
+  const frame =
+    (await captureProcessedStill(stream)) ??
+    (await createImageBitmap(videoElement))
   const originalWidth = frame.width
   const originalHeight = frame.height
 
@@ -97,6 +174,8 @@ export async function captureVideoFrame(
     throw new Error('캔버스 작업 영역을 만들 수 없습니다')
   }
 
+  context.imageSmoothingEnabled = true
+  context.imageSmoothingQuality = 'high'
   context.drawImage(frame, 0, 0, width, height)
   frame.close()
 

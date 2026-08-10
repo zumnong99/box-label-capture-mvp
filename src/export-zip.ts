@@ -154,10 +154,9 @@ export async function buildSessionZip(
     const blob = await zip.generateAsync(
       {
         type: 'blob',
-        compression: 'DEFLATE',
-        compressionOptions: {
-          level: 6,
-        },
+        // JPEG는 이미 압축되어 있으므로 재압축하지 않아 Android의 CPU/메모리
+        // 사용량을 줄이고 큰 세션도 내보낼 수 있게 한다.
+        compression: 'STORE',
       },
       (metadata) => {
         onProgress?.({
