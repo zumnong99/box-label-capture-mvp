@@ -284,6 +284,34 @@ p {
   background: #111827;
 }
 
+.camera-export-bar {
+  padding: 12px;
+  display: grid;
+  gap: 7px;
+  color: #dbeafe;
+  background: #172554;
+}
+
+.camera-export-bar button {
+  min-height: 58px;
+  border-color: #60a5fa;
+  color: #ffffff;
+  font-size: 18px;
+  background: #2563eb;
+}
+
+.camera-export-bar button:disabled {
+  color: #bfdbfe;
+  background: #1e40af;
+}
+
+.camera-export-bar p {
+  color: #bfdbfe;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+}
+
 .order-section,
 .action-panel,
 .photo-section,

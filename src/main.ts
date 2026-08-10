@@ -644,6 +644,13 @@ async function captureForCurrentBox(mode: 'capture' | 'retake'): Promise<void> {
         ? retakeCurrentBox(session, image.capturedAt, metadata)
         : captureCurrentBox(session, image.capturedAt, metadata)
 
+    // ZIP 준비 후 사진이 추가/교체되면 이전 ZIP을 다시 공유하지 않도록 무효화한다.
+    exportResult = null
+    exportSummary = null
+    exportProgress = null
+    exportPanelVisible = false
+    exportStatusMessage = ''
+    exportStatusTone = 'idle'
     commitSession(nextSession)
 
     if (persisted) {
@@ -812,7 +819,8 @@ async function startSessionExport(): Promise<void> {
       render()
     })
     exportIsBuilding = false
-    exportStatusMessage = 'ZIP 파일을 생성했습니다.'
+    exportStatusMessage =
+      'ZIP 준비가 끝났습니다. 위의 Google Drive로 보내기 버튼을 누르세요.'
     exportStatusTone = 'running'
     render()
   } catch (error) {
@@ -823,6 +831,52 @@ async function startSessionExport(): Promise<void> {
     exportStatusTone = 'error'
     render()
   }
+}
+
+function sharePreparedExport(): void {
+  if (!exportResult) {
+    return
+  }
+
+  void shareZipIfSupported(exportResult.blob, exportResult.fileName)
+    .then((shared) => {
+      if (shared) {
+        exportStatusMessage = '공유를 완료했습니다.'
+      } else {
+        downloadBlob(exportResult!.blob, exportResult!.fileName)
+        exportStatusMessage =
+          '공유 미지원 브라우저라 ZIP 다운로드를 시작했습니다.'
+      }
+      exportStatusTone = 'running'
+      render()
+    })
+    .catch((error: unknown) => {
+      console.error('ZIP share failed', error)
+      const errorName = error instanceof DOMException ? error.name : ''
+
+      if (errorName === 'AbortError') {
+        exportStatusMessage = '공유가 취소되었습니다.'
+        exportStatusTone = 'warning'
+      } else {
+        downloadBlob(exportResult!.blob, exportResult!.fileName)
+        exportStatusMessage = '공유 대신 ZIP 다운로드를 시작했습니다.'
+        exportStatusTone = 'running'
+      }
+      render()
+    })
+}
+
+function handleDriveExport(): void {
+  if (exportIsBuilding) {
+    return
+  }
+
+  if (exportResult) {
+    sharePreparedExport()
+    return
+  }
+
+  void startSessionExport()
 }
 
 // 카메라 패널은 video element(stateful media element)를 품고 있어 매 렌더마다
@@ -868,6 +922,14 @@ function buildShell(): void {
           </button>
         </div>
         <p class="camera-instruction">라벨 전체가 정사각형 안에 들어오게 촬영</p>
+        <div class="camera-export-bar">
+          <button type="button" data-action="drive-export">
+            Google Drive 내보내기
+          </button>
+          <p data-drive-export-hint>
+            ZIP 준비 후 한 번 더 눌러 공유창에서 Drive를 선택하세요.
+          </p>
+        </div>
       </section>
 
       <div data-region="bottom"></div>
@@ -905,6 +967,30 @@ function updateCameraPanel(): void {
   setDisabled('retake', !hasCameraStream || captureIsRunning)
   setDisabled('camera-start', hasCameraStream || cameraIsStarting)
   setDisabled('camera-stop', !hasCameraStream)
+  setDisabled('drive-export', exportIsBuilding)
+
+  const driveExportButton = app.querySelector<HTMLButtonElement>(
+    '[data-action="drive-export"]',
+  )
+  const driveExportHint = app.querySelector<HTMLElement>(
+    '[data-drive-export-hint]',
+  )
+
+  if (driveExportButton) {
+    driveExportButton.textContent = exportIsBuilding
+      ? `ZIP 준비 중 ${exportProgress?.percent ?? 0}%`
+      : exportResult
+        ? 'Google Drive로 보내기'
+        : 'Google Drive 내보내기'
+  }
+
+  if (driveExportHint) {
+    driveExportHint.textContent = exportIsBuilding
+      ? exportProgress?.message ?? '사진 ZIP을 준비하고 있습니다.'
+      : exportResult
+        ? '버튼을 누른 뒤 공유창에서 Drive를 선택하세요.'
+        : 'ZIP 준비 후 한 번 더 눌러 공유창에서 Drive를 선택하세요.'
+  }
 }
 
 function render(): void {
@@ -1054,6 +1140,10 @@ function bindCameraEvents(): void {
   app.querySelector('[data-action="retake"]')?.addEventListener('click', () => {
     void captureForCurrentBox('retake')
   })
+
+  app
+    .querySelector('[data-action="drive-export"]')
+    ?.addEventListener('click', handleDriveExport)
 }
 
 // 상/하단 영역은 매 렌더마다 innerHTML 로 다시 그려지므로 이벤트도 매번 재바인딩한다.
@@ -1099,36 +1189,7 @@ function bindDynamicEvents(): void {
   app
     .querySelector('[data-action="save-or-share-zip"]')
     ?.addEventListener('click', () => {
-      if (!exportResult) {
-        return
-      }
-
-      void shareZipIfSupported(exportResult.blob, exportResult.fileName)
-        .then((shared) => {
-          if (shared) {
-            exportStatusMessage = '공유를 완료했습니다.'
-          } else {
-            downloadBlob(exportResult!.blob, exportResult!.fileName)
-            exportStatusMessage =
-              '공유 미지원 브라우저라 ZIP 다운로드를 시작했습니다.'
-          }
-          exportStatusTone = 'running'
-          render()
-        })
-        .catch((error: unknown) => {
-          console.error('ZIP share failed', error)
-          const errorName = error instanceof DOMException ? error.name : ''
-
-          if (errorName === 'AbortError') {
-            exportStatusMessage = '공유가 취소되었습니다.'
-            exportStatusTone = 'warning'
-          } else {
-            downloadBlob(exportResult!.blob, exportResult!.fileName)
-            exportStatusMessage = '공유 대신 ZIP 다운로드를 시작했습니다.'
-            exportStatusTone = 'running'
-          }
-          render()
-        })
+      sharePreparedExport()
     })
 
   app.querySelector('[data-action="reset"]')?.addEventListener('click', () => {
