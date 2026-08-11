@@ -156,7 +156,7 @@ p {
   position: relative;
   width: 100%;
   min-height: 0;
-  aspect-ratio: 3 / 4;
+  aspect-ratio: var(--camera-stream-aspect, 3 / 4);
   background:
     linear-gradient(135deg, rgba(37, 99, 235, 0.25), transparent 45%),
     linear-gradient(45deg, rgba(15, 118, 110, 0.24), transparent 50%),
@@ -901,8 +901,16 @@ p {
   }
 
   .camera-preview-frame {
-    height: clamp(260px, 45svh, 360px);
-    aspect-ratio: auto;
+    height: auto;
+    aspect-ratio: 4 / 3;
+  }
+
+  .camera-preview {
+    object-fit: cover;
+  }
+
+  .label-guide {
+    width: min(68%, 300px);
   }
 
   .camera-status {

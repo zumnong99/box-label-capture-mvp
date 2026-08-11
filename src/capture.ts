@@ -116,6 +116,47 @@ export function resizeDimensions(
   }
 }
 
+export type CropRectangle = {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export function getCenteredCrop(
+  sourceWidth: number,
+  sourceHeight: number,
+  targetAspectRatio: number,
+): CropRectangle {
+  const sourceAspectRatio = sourceWidth / sourceHeight
+
+  if (!Number.isFinite(targetAspectRatio) || targetAspectRatio <= 0) {
+    return { x: 0, y: 0, width: sourceWidth, height: sourceHeight }
+  }
+
+  if (sourceAspectRatio > targetAspectRatio) {
+    const width = Math.max(1, Math.round(sourceHeight * targetAspectRatio))
+    return {
+      x: Math.round((sourceWidth - width) / 2),
+      y: 0,
+      width,
+      height: sourceHeight,
+    }
+  }
+
+  if (sourceAspectRatio < targetAspectRatio) {
+    const height = Math.max(1, Math.round(sourceWidth / targetAspectRatio))
+    return {
+      x: 0,
+      y: Math.round((sourceHeight - height) / 2),
+      width: sourceWidth,
+      height,
+    }
+  }
+
+  return { x: 0, y: 0, width: sourceWidth, height: sourceHeight }
+}
+
 export function canvasToJpegBlob(
   canvas: HTMLCanvasElement,
   quality: number,
@@ -157,10 +198,20 @@ export async function captureCameraImage(
     (await createImageBitmap(videoElement))
   const originalWidth = frame.width
   const originalHeight = frame.height
-
-  const { width, height } = resizeDimensions(
+  const previewFrame = videoElement.parentElement?.getBoundingClientRect()
+  const previewAspectRatio =
+    previewFrame && previewFrame.width > 0 && previewFrame.height > 0
+      ? previewFrame.width / previewFrame.height
+      : originalWidth / originalHeight
+  const crop = getCenteredCrop(
     originalWidth,
     originalHeight,
+    previewAspectRatio,
+  )
+
+  const { width, height } = resizeDimensions(
+    crop.width,
+    crop.height,
     options.maxLongEdge,
   )
   const canvas = document.createElement('canvas')
@@ -176,7 +227,18 @@ export async function captureCameraImage(
 
   context.imageSmoothingEnabled = true
   context.imageSmoothingQuality = 'high'
-  context.drawImage(frame, 0, 0, width, height)
+  // object-fit: cover로 보이는 중앙 영역과 저장 JPEG의 구도를 일치시킨다.
+  context.drawImage(
+    frame,
+    crop.x,
+    crop.y,
+    crop.width,
+    crop.height,
+    0,
+    0,
+    width,
+    height,
+  )
   frame.close()
 
   const blob = await canvasToJpegBlob(canvas, options.jpegQuality)

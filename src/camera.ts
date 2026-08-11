@@ -186,7 +186,10 @@ function syncPreviewAspectRatio(videoElement: HTMLVideoElement): void {
     return
   }
 
-  frame.style.aspectRatio = `${videoElement.videoWidth} / ${videoElement.videoHeight}`
+  frame.style.setProperty(
+    '--camera-stream-aspect',
+    `${videoElement.videoWidth} / ${videoElement.videoHeight}`,
+  )
 }
 
 async function playPreview(
