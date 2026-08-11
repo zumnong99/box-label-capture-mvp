@@ -8,11 +8,9 @@ import {
 import { captureCameraImage } from './capture'
 import {
   buildSessionZip,
-  canShareFiles,
   collectExportSummary,
   downloadBlob,
   formatExportProgress,
-  shareZipIfSupported,
   type ExportProgress,
   type ExportResult,
   type ExportSummary,
@@ -45,14 +43,20 @@ import {
 } from './state'
 import { buildManifest, buildManifestCsv } from './manifest'
 import { clearStoredSession, loadSession, saveSession } from './storage'
+import {
+  canSharePhotoFiles,
+  createShareablePhotoFiles,
+  sharePhotoFiles,
+} from './share'
 import type { CapturedImage } from './capture'
+import type { PersistedPhotoRecord } from './indexed-photo-store'
 import type { SessionState } from './types'
 
 type ManifestPreviewMode = 'json' | 'csv'
 type StatusTone = 'idle' | 'loading' | 'running' | 'warning' | 'error'
 
 const appElement = document.querySelector<HTMLDivElement>('#app')
-const APP_BUILD_LABEL = 'box-label-capture-mvp 0.0.0'
+const APP_BUILD_LABEL = 'box-label-capture-mvp android-share-20260811'
 
 if (!appElement) {
   throw new Error('앱 루트 요소를 찾을 수 없습니다.')
@@ -86,6 +90,11 @@ let exportProgress: ExportProgress | null = null
 let exportIsBuilding = false
 let exportStatusMessage = ''
 let exportStatusTone: StatusTone = 'idle'
+let shareFiles: File[] = []
+let shareFilesLoading = isIndexedDbSupported()
+let shareIsRunning = false
+let shareStatusMessage = '저장된 사진을 확인하고 있습니다.'
+let shareStatusTone: StatusTone = 'idle'
 
 function escapeHtml(value: string): string {
   return value
@@ -170,11 +179,11 @@ function isWebShareSupported(): boolean {
 
 function isFileShareSupported(): boolean {
   try {
-    return canShareFiles(
-      new File(['diagnostic'], 'diagnostic.txt', {
-        type: 'text/plain',
+    return canSharePhotoFiles([
+      new File(['diagnostic'], 'diagnostic.jpg', {
+        type: 'image/jpeg',
       }),
-    )
+    ])
   } catch {
     return false
   }
@@ -301,6 +310,84 @@ function isBoxCapturedInState(cartNo: string, boxNo: number): boolean {
   return box?.status === 'captured'
 }
 
+function setShareFiles(records: PersistedPhotoRecord[]): void {
+  shareFiles = createShareablePhotoFiles(records)
+  shareFilesLoading = false
+  shareStatusMessage =
+    shareFiles.length > 0
+      ? `저장된 사진 ${shareFiles.length}장을 공유할 수 있습니다.`
+      : '촬영한 사진이 생기면 Android 공유창을 열 수 있습니다.'
+  shareStatusTone = shareFiles.length > 0 ? 'running' : 'idle'
+}
+
+function upsertShareFile(record: PersistedPhotoRecord): void {
+  const nextFile = createShareablePhotoFiles([record])[0]
+
+  shareFiles = shareFiles
+    .filter((file) => file.name !== record.fileName)
+    .concat(nextFile)
+    .sort((left, right) => left.name.localeCompare(right.name))
+  shareFilesLoading = false
+  shareStatusMessage = `저장된 사진 ${shareFiles.length}장을 공유할 수 있습니다.`
+  shareStatusTone = 'running'
+}
+
+function getCurrentShareFile(): File | null {
+  const cart = getActiveCart(session)
+  const box = getCurrentBox(session)
+  const fileName = getImageFilename(cart.cartNo, box.boxNo)
+  return shareFiles.find((file) => file.name === fileName) ?? null
+}
+
+function openAndroidShareSheet(files: File[], label: string): void {
+  if (files.length === 0) {
+    shareStatusMessage = '먼저 사진을 촬영해 주세요.'
+    shareStatusTone = 'warning'
+    updateCameraPanel()
+    return
+  }
+
+  if (!canSharePhotoFiles(files)) {
+    shareStatusMessage =
+      files.length > 1
+        ? '이 브라우저는 여러 장 공유를 지원하지 않습니다. 현재 사진 공유를 이용해 주세요.'
+        : '파일 공유를 지원하는 Chrome 또는 Samsung Internet에서 열어 주세요.'
+    shareStatusTone = 'warning'
+    updateCameraPanel()
+    return
+  }
+
+  // 사용자 탭 권한이 유지된 상태에서 share()를 먼저 호출한 다음 UI를 갱신한다.
+  const sharePromise = sharePhotoFiles(files, `${session.sessionId} ${label}`)
+  shareIsRunning = true
+  shareStatusMessage = 'Android 공유창을 여는 중입니다.'
+  shareStatusTone = 'loading'
+  updateCameraPanel()
+
+  void sharePromise
+    .then(() => {
+      shareStatusMessage = `${label} 공유를 완료했습니다.`
+      shareStatusTone = 'running'
+    })
+    .catch((error: unknown) => {
+      const errorName = error instanceof DOMException ? error.name : ''
+
+      if (errorName === 'AbortError') {
+        shareStatusMessage = '공유를 취소했습니다.'
+        shareStatusTone = 'idle'
+      } else {
+        console.error('Photo share failed', error)
+        shareStatusMessage =
+          '공유창을 열지 못했습니다. Chrome 또는 Samsung Internet에서 다시 시도해 주세요.'
+        shareStatusTone = 'error'
+      }
+    })
+    .finally(() => {
+      shareIsRunning = false
+      updateCameraPanel()
+    })
+}
+
 function renderManifestPanel(): string {
   if (!exportPanelVisible) {
     return ''
@@ -323,13 +410,6 @@ function renderManifestPanel(): string {
       ? '<p class="export-warning">미완료 카트가 있습니다. 그래도 내보낼 수 있습니다.</p>'
       : ''
   const largeExportWarning = summary ? getLargeExportWarning(summary) : ''
-  const shareSupported = exportResult
-    ? canShareFiles(
-        new File([exportResult.blob], exportResult.fileName, {
-          type: 'application/zip',
-        }),
-      )
-    : false
   const packageSummary = summary
     ? `사진 ${summary.photosAvailable}개 + manifest.json + manifest.csv`
     : '사진 ZIP을 준비하는 중입니다.'
@@ -404,17 +484,7 @@ function renderManifestPanel(): string {
         exportResult
           ? `
             <div class="export-actions">
-              <button
-                type="button"
-                data-action="save-or-share-zip"
-              >
-                ${
-                  shareSupported
-                    ? '기기에 저장 · 공유'
-                    : '기기에 ZIP 저장'
-                }
-              </button>
-              <button type="button" data-action="download-zip">ZIP 다운로드</button>
+              <button type="button" data-action="download-zip">ZIP 기기에 저장</button>
             </div>
           `
           : ''
@@ -637,6 +707,7 @@ async function captureForCurrentBox(mode: 'capture' | 'retake'): Promise<void> {
           : `${currentBox.boxNo}번 사진을 촬영하고 저장했습니다.`
         : '사진은 촬영되었지만 브라우저 저장에 실패했습니다. 새로고침하면 사라질 수 있습니다.'
     captureStatusTone = persisted ? 'running' : 'warning'
+    upsertShareFile(record)
 
     const metadata = getImageMetadata(image)
     const nextSession =
@@ -644,7 +715,7 @@ async function captureForCurrentBox(mode: 'capture' | 'retake'): Promise<void> {
         ? retakeCurrentBox(session, image.capturedAt, metadata)
         : captureCurrentBox(session, image.capturedAt, metadata)
 
-    // ZIP 준비 후 사진이 추가/교체되면 이전 ZIP을 다시 공유하지 않도록 무효화한다.
+    // 사진이 추가/교체되면 이전에 만든 ZIP이 재사용되지 않도록 무효화한다.
     exportResult = null
     exportSummary = null
     exportProgress = null
@@ -703,6 +774,7 @@ async function restorePersistedPhotosForSession(): Promise<void> {
   if (!isIndexedDbSupported()) {
     diagnosticsPhotoCount = null
     photoRestoreCompleted = true
+    setShareFiles([])
     render()
     return
   }
@@ -723,6 +795,7 @@ async function restorePersistedPhotosForSession(): Promise<void> {
 
     diagnosticsPhotoCount = records.length
     photoRestoreCompleted = true
+    setShareFiles(records)
     photoStorageStatusMessage =
       records.length > 0
         ? `${records.length}개 사진을 IndexedDB에서 복원했습니다.`
@@ -734,6 +807,7 @@ async function restorePersistedPhotosForSession(): Promise<void> {
     console.error('Photo restore failed', error)
     diagnosticsPhotoCount = null
     photoRestoreCompleted = true
+    setShareFiles([])
     photoStorageStatusMessage = '저장된 사진을 불러오지 못했습니다'
     photoStorageStatusTone = 'error'
     render()
@@ -771,6 +845,11 @@ async function resetSession(): Promise<void> {
   exportIsBuilding = false
   exportStatusMessage = ''
   exportStatusTone = 'idle'
+  shareFiles = []
+  shareFilesLoading = false
+  shareIsRunning = false
+  shareStatusMessage = '촬영한 사진이 생기면 Android 공유창을 열 수 있습니다.'
+  shareStatusTone = 'idle'
   photoRestoreCompleted = true
   diagnosticsPhotoCount = 0
   commitSession(createSession())
@@ -820,7 +899,7 @@ async function startSessionExport(): Promise<void> {
     })
     exportIsBuilding = false
     exportStatusMessage =
-      'ZIP 준비가 끝났습니다. 위의 Google Drive로 보내기 버튼을 누르세요.'
+      'ZIP 준비가 끝났습니다. 아래 버튼으로 기기에 저장할 수 있습니다.'
     exportStatusTone = 'running'
     render()
   } catch (error) {
@@ -831,52 +910,6 @@ async function startSessionExport(): Promise<void> {
     exportStatusTone = 'error'
     render()
   }
-}
-
-function sharePreparedExport(): void {
-  if (!exportResult) {
-    return
-  }
-
-  void shareZipIfSupported(exportResult.blob, exportResult.fileName)
-    .then((shared) => {
-      if (shared) {
-        exportStatusMessage = '공유를 완료했습니다.'
-      } else {
-        downloadBlob(exportResult!.blob, exportResult!.fileName)
-        exportStatusMessage =
-          '공유 미지원 브라우저라 ZIP 다운로드를 시작했습니다.'
-      }
-      exportStatusTone = 'running'
-      render()
-    })
-    .catch((error: unknown) => {
-      console.error('ZIP share failed', error)
-      const errorName = error instanceof DOMException ? error.name : ''
-
-      if (errorName === 'AbortError') {
-        exportStatusMessage = '공유가 취소되었습니다.'
-        exportStatusTone = 'warning'
-      } else {
-        downloadBlob(exportResult!.blob, exportResult!.fileName)
-        exportStatusMessage = '공유 대신 ZIP 다운로드를 시작했습니다.'
-        exportStatusTone = 'running'
-      }
-      render()
-    })
-}
-
-function handleDriveExport(): void {
-  if (exportIsBuilding) {
-    return
-  }
-
-  if (exportResult) {
-    sharePreparedExport()
-    return
-  }
-
-  void startSessionExport()
 }
 
 // 카메라 패널은 video element(stateful media element)를 품고 있어 매 렌더마다
@@ -922,13 +955,16 @@ function buildShell(): void {
           </button>
         </div>
         <p class="camera-instruction">라벨 전체가 정사각형 안에 들어오게 촬영</p>
-        <div class="camera-export-bar">
-          <button type="button" data-action="drive-export">
-            Google Drive 내보내기
-          </button>
-          <p data-drive-export-hint>
-            ZIP 준비 후 한 번 더 눌러 공유창에서 Drive를 선택하세요.
-          </p>
+        <div class="camera-share-bar">
+          <div class="camera-share-actions">
+            <button type="button" data-action="share-current-photo">
+              현재 사진 공유
+            </button>
+            <button class="primary-share" type="button" data-action="share-all-photos">
+              전체 사진 공유
+            </button>
+          </div>
+          <p class="share-status" data-share-status role="status" aria-live="polite"></p>
         </div>
       </section>
 
@@ -967,29 +1003,34 @@ function updateCameraPanel(): void {
   setDisabled('retake', !hasCameraStream || captureIsRunning)
   setDisabled('camera-start', hasCameraStream || cameraIsStarting)
   setDisabled('camera-stop', !hasCameraStream)
-  setDisabled('drive-export', exportIsBuilding)
-
-  const driveExportButton = app.querySelector<HTMLButtonElement>(
-    '[data-action="drive-export"]',
+  const currentShareFile = getCurrentShareFile()
+  setDisabled(
+    'share-current-photo',
+    shareFilesLoading || shareIsRunning || currentShareFile === null,
   )
-  const driveExportHint = app.querySelector<HTMLElement>(
-    '[data-drive-export-hint]',
+  setDisabled(
+    'share-all-photos',
+    shareFilesLoading || shareIsRunning || shareFiles.length === 0,
   )
 
-  if (driveExportButton) {
-    driveExportButton.textContent = exportIsBuilding
-      ? `ZIP 준비 중 ${exportProgress?.percent ?? 0}%`
-      : exportResult
-        ? 'Google Drive로 보내기'
-        : 'Google Drive 내보내기'
+  const allShareButton = app.querySelector<HTMLButtonElement>(
+    '[data-action="share-all-photos"]',
+  )
+  const shareStatus = app.querySelector<HTMLElement>('[data-share-status]')
+
+  if (allShareButton) {
+    allShareButton.textContent = shareFilesLoading
+      ? '공유 준비 중'
+      : shareIsRunning
+        ? '공유창 여는 중'
+        : `전체 ${shareFiles.length}장 공유`
   }
 
-  if (driveExportHint) {
-    driveExportHint.textContent = exportIsBuilding
-      ? exportProgress?.message ?? '사진 ZIP을 준비하고 있습니다.'
-      : exportResult
-        ? '버튼을 누른 뒤 공유창에서 Drive를 선택하세요.'
-        : 'ZIP 준비 후 한 번 더 눌러 공유창에서 Drive를 선택하세요.'
+  if (shareStatus) {
+    shareStatus.className = `share-status ${shareStatusTone}`
+    shareStatus.textContent = shareFilesLoading
+      ? '저장된 사진을 확인하고 있습니다.'
+      : shareStatusMessage
   }
 }
 
@@ -1142,8 +1183,17 @@ function bindCameraEvents(): void {
   })
 
   app
-    .querySelector('[data-action="drive-export"]')
-    ?.addEventListener('click', handleDriveExport)
+    .querySelector('[data-action="share-current-photo"]')
+    ?.addEventListener('click', () => {
+      const currentFile = getCurrentShareFile()
+      openAndroidShareSheet(currentFile ? [currentFile] : [], '현재 사진')
+    })
+
+  app
+    .querySelector('[data-action="share-all-photos"]')
+    ?.addEventListener('click', () => {
+      openAndroidShareSheet(shareFiles, `전체 사진 ${shareFiles.length}장`)
+    })
 }
 
 // 상/하단 영역은 매 렌더마다 innerHTML 로 다시 그려지므로 이벤트도 매번 재바인딩한다.
@@ -1184,12 +1234,6 @@ function bindDynamicEvents(): void {
         exportStatusTone = 'error'
         render()
       }
-    })
-
-  app
-    .querySelector('[data-action="save-or-share-zip"]')
-    ?.addEventListener('click', () => {
-      sharePreparedExport()
     })
 
   app.querySelector('[data-action="reset"]')?.addEventListener('click', () => {

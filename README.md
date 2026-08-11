@@ -8,7 +8,7 @@
 - 기본 카트 번호 `001`과 박스 번호 `1`에서 시작합니다.
 - `다음 박스`와 `다음 카트`로 필요한 만큼 진행할 수 있습니다.
 - 현재 카트와 현재 박스 번호, 촬영 완료 수를 표시합니다.
-- `촬영`, `재촬영`, `이전 박스`, `다음 박스`, `다음 카트`, `사진 ZIP 만들기` 동작을 브라우저 상태로 처리합니다.
+- `촬영`, `재촬영`, `이전 박스`, `다음 박스`, `다음 카트`, `사진 공유`, `사진 ZIP 만들기` 동작을 브라우저 상태로 처리합니다.
 - 사용자가 `카메라 시작`을 누르면 `getUserMedia`로 카메라 미리보기를 시작합니다.
 - 가능한 경우 후면 카메라를 우선 사용하고, 실패하면 기본 카메라로 재시도합니다.
 - Android/Chromium에서는 `촬영` 시 정지사진 API를 우선 사용해 제조사 카메라의 노이즈 제거·사진 처리가 적용된 이미지를 저장합니다.
@@ -17,7 +17,7 @@
 - 박스별 사진 미리보기와 이미지 메타데이터를 보여줍니다.
 - `manifest.json` / `manifest.csv` 미리보기에 파일 경로와 이미지 메타데이터를 포함합니다.
 - `사진 ZIP 만들기`로 IndexedDB에 저장된 JPEG 사진과 `manifest.json`, `manifest.csv`를 ZIP으로 묶습니다.
-- ZIP은 다운로드하거나 Web Share API가 지원되는 브라우저에서 공유할 수 있습니다.
+- JPEG 사진은 Android Web Share API로 기본 공유창에 전달하고, ZIP은 기기에 별도로 저장할 수 있습니다.
 - Blob은 IndexedDB에 저장하고, object URL은 런타임 메모리에만 둡니다.
 - `localStorage`에는 가벼운 세션 상태와 metadata만 저장합니다.
 
@@ -40,7 +40,7 @@ npm run dev
 
 현재 사진 Blob은 IndexedDB에 저장됩니다. 다만 iPhone Safari 사생활 보호 모드나 저장소 제한 환경에서는 IndexedDB가 차단되거나 브라우저가 저장 데이터를 지울 수 있습니다.
 
-ZIP 내보내기는 수동 작업입니다. ZIP을 다운로드하거나 공유한 뒤 PC로 옮기고, PC의 OCR 입력 폴더에 직접 압축 해제해야 합니다. GitHub Pages 정적 앱은 PC 로컬 저장소나 repo 폴더에 직접 저장할 수 없습니다.
+ZIP 내보내기는 수동 작업입니다. ZIP을 기기에 저장한 뒤 PC로 옮기고, PC의 OCR 입력 폴더에 직접 압축 해제해야 합니다. GitHub Pages 정적 앱은 PC 로컬 저장소나 repo 폴더에 직접 저장할 수 없습니다.
 
 ## 검증
 
@@ -72,15 +72,16 @@ GitHub에서 `Settings > Pages > Source`를 `GitHub Actions`로 설정합니다.
 https://<github-user>.github.io/box-label-capture-mvp/
 ```
 
-GitHub Pages는 앱 코드만 호스팅합니다. 촬영한 사진은 GitHub로 업로드되지 않고, 브라우저 IndexedDB에 남아 있다가 사용자가 ZIP으로 내보내거나 공유할 때만 이동합니다. GitHub Pages 정적 앱은 PC의 repo 폴더나 OCR 입력 폴더에 직접 저장할 수 없습니다.
+GitHub Pages는 앱 코드만 호스팅합니다. 촬영한 사진은 GitHub로 업로드되지 않고, 브라우저 IndexedDB에 남아 있다가 사용자가 Android 공유창으로 보내거나 ZIP으로 내보낼 때만 이동합니다. GitHub Pages 정적 앱은 PC의 repo 폴더나 OCR 입력 폴더에 직접 저장할 수 없습니다.
 
 ## Galaxy Fold / Android 테스트
 
 - 폴드8 후면 1배 광각과 4:3 카메라 스트림을 우선 사용합니다.
 - 미리보기는 실제 카메라 프레임 비율을 그대로 표시하므로 화면에서 본 구도와 저장 사진이 일치합니다.
 - 폴드 커버 화면에서는 라벨에 적합한 가로 4:3 미리보기를 사용하되, 저장 사진은 label_scan 호환성을 위해 센서의 전체 세로 3:4 프레임을 유지합니다.
-- `기기에 저장 · 공유`는 Android 파일 공유를 우선 사용하고, 미지원 브라우저에서는 ZIP 다운로드로 자동 폴백합니다.
-- 카메라 바로 아래의 `Google Drive 내보내기`로 ZIP을 준비한 뒤 같은 버튼을 다시 눌러 Android 공유창에서 Drive를 선택할 수 있습니다.
+- `현재 사진 공유`는 현재 JPEG 한 장을, `전체 사진 공유`는 저장된 JPEG 전체를 Android 기본 공유창으로 보냅니다.
+- 공유창에서 카카오톡, Instagram, Google Drive 등 기기에 설치된 호환 앱을 선택할 수 있습니다.
+- ZIP은 공유와 분리되어 `사진 ZIP 만들기` 후 `ZIP 기기에 저장`으로 내려받습니다.
 - 접은 화면과 펼친 화면에서 버튼 및 라벨 가이드가 잘리지 않는지 확인합니다.
 
 ## iPhone Safari 테스트
@@ -90,7 +91,7 @@ GitHub Pages는 앱 코드만 호스팅합니다. 촬영한 사진은 GitHub로 
 - `카메라 시작` → 촬영 → 새로고침 복원 → ZIP 내보내기 순서로 확인합니다.
 - `진단 정보` 패널에서 HTTPS, 카메라, IndexedDB, 공유 지원 상태를 확인합니다.
 - 촬영한 사진은 GitHub로 업로드되지 않습니다.
-- ZIP은 다운로드 또는 공유 후 PC로 수동 이동해야 합니다.
+- ZIP은 다운로드 후 PC로 수동 이동해야 합니다.
 - 상세 체크리스트는 `docs/IPHONE_SAFARI_TEST_CHECKLIST.md`를 따릅니다.
 
 ## iPhone Safari 메모
@@ -99,4 +100,4 @@ iPhone Safari의 `getUserMedia`는 HTTPS 환경이 필요합니다. 개발 PC의
 
 GitHub Pages는 HTTPS를 제공하므로 이후 실제 기기 테스트와 배포에 적합합니다. 현재 단계는 카메라 프레임을 JPEG Blob으로 캡처하고 IndexedDB에 저장하며, 수동 ZIP 내보내기를 제공합니다.
 
-iPhone Safari 실기기 테스트는 배포된 HTTPS URL을 Safari에서 직접 열어 진행합니다. `카메라 시작`으로 권한을 허용한 뒤 여러 박스를 촬영하고, 새로고침 후 IndexedDB 복원 여부를 확인하고, 마지막으로 ZIP 다운로드 또는 공유 동작을 확인합니다.
+iPhone Safari 실기기 테스트는 배포된 HTTPS URL을 Safari에서 직접 열어 진행합니다. `카메라 시작`으로 권한을 허용한 뒤 여러 박스를 촬영하고, 새로고침 후 IndexedDB 복원 여부를 확인하고, 마지막으로 사진 공유와 ZIP 다운로드 동작을 확인합니다.

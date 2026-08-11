@@ -207,31 +207,6 @@ export function downloadBlob(blob: Blob, fileName: string): void {
   }
 }
 
-export function canShareFiles(file: File): boolean {
-  return Boolean(navigator.canShare?.({ files: [file] }))
-}
-
-export async function shareZipIfSupported(
-  blob: Blob,
-  fileName: string,
-): Promise<boolean> {
-  const file = new File([blob], fileName, {
-    type: 'application/zip',
-  })
-
-  if (!canShareFiles(file)) {
-    return false
-  }
-
-  // text 필드는 일부 공유 대상(카톡/메일)에서 별도 .txt 첨부나 본문으로
-  // 변환되므로 ZIP만 전달되도록 넣지 않는다.
-  await navigator.share({
-    files: [file],
-    title: fileName,
-  })
-  return true
-}
-
 export function formatExportProgress(progress: ExportProgress): string {
   return `${progress.percent}% · ${progress.message}`
 }
