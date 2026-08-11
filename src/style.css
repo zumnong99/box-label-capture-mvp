@@ -815,7 +815,7 @@ p {
 }
 
 /* Galaxy Fold 커버 화면처럼 폭이 좁고 세로가 제한된 화면용 압축 레이아웃 */
-@media (max-width: 480px) {
+@media (max-width: 599px) {
   .app-shell {
     padding:
       calc(6px + env(safe-area-inset-top)) 8px
