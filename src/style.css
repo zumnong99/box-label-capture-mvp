@@ -302,10 +302,15 @@ p {
   background: #172554;
 }
 
+.camera-zip-actions,
 .camera-share-actions {
   display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.camera-share-actions {
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
 }
 
 .camera-share-bar button {
@@ -318,6 +323,11 @@ p {
 
 .camera-share-bar .primary-share {
   background: #2563eb;
+}
+
+.camera-share-bar .zip-build-action {
+  border-color: #2dd4bf;
+  background: #0f766e;
 }
 
 .camera-share-bar button:disabled {
@@ -335,6 +345,26 @@ p {
 
 .camera-share-bar .share-status.loading {
   color: #fef3c7;
+}
+
+.camera-share-bar .zip-status {
+  color: #bfdbfe;
+}
+
+.camera-share-bar .zip-status.loading {
+  color: #fef3c7;
+}
+
+.camera-share-bar .zip-status.running {
+  color: #bbf7d0;
+}
+
+.camera-share-bar .zip-status.warning {
+  color: #fde68a;
+}
+
+.camera-share-bar .zip-status.error {
+  color: #fecaca;
 }
 
 .camera-share-bar .share-status.running {

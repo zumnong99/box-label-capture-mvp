@@ -56,7 +56,7 @@ type ManifestPreviewMode = 'json' | 'csv'
 type StatusTone = 'idle' | 'loading' | 'running' | 'warning' | 'error'
 
 const appElement = document.querySelector<HTMLDivElement>('#app')
-const APP_BUILD_LABEL = 'box-label-capture-mvp android-share-20260811'
+const APP_BUILD_LABEL = 'box-label-capture-mvp android-zip-share-20260811'
 
 if (!appElement) {
   throw new Error('앱 루트 요소를 찾을 수 없습니다.')
@@ -956,6 +956,15 @@ function buildShell(): void {
         </div>
         <p class="camera-instruction">라벨 전체가 정사각형 안에 들어오게 촬영</p>
         <div class="camera-share-bar">
+          <div class="camera-zip-actions">
+            <button class="zip-build-action" type="button" data-action="prepare-zip">
+              ZIP 만들기
+            </button>
+            <button type="button" data-action="save-prepared-zip">
+              완성된 ZIP 저장
+            </button>
+          </div>
+          <p class="zip-status" data-zip-status role="status" aria-live="polite"></p>
           <div class="camera-share-actions">
             <button type="button" data-action="share-current-photo">
               현재 사진 공유
@@ -1003,6 +1012,11 @@ function updateCameraPanel(): void {
   setDisabled('retake', !hasCameraStream || captureIsRunning)
   setDisabled('camera-start', hasCameraStream || cameraIsStarting)
   setDisabled('camera-stop', !hasCameraStream)
+  setDisabled(
+    'prepare-zip',
+    exportIsBuilding || shareFilesLoading || shareFiles.length === 0,
+  )
+  setDisabled('save-prepared-zip', exportIsBuilding || exportResult === null)
   const currentShareFile = getCurrentShareFile()
   setDisabled(
     'share-current-photo',
@@ -1016,7 +1030,28 @@ function updateCameraPanel(): void {
   const allShareButton = app.querySelector<HTMLButtonElement>(
     '[data-action="share-all-photos"]',
   )
+  const zipBuildButton = app.querySelector<HTMLButtonElement>(
+    '[data-action="prepare-zip"]',
+  )
+  const zipStatus = app.querySelector<HTMLElement>('[data-zip-status]')
   const shareStatus = app.querySelector<HTMLElement>('[data-share-status]')
+
+  if (zipBuildButton) {
+    zipBuildButton.textContent = exportIsBuilding
+      ? `ZIP 만드는 중 ${exportProgress?.percent ?? 0}%`
+      : exportResult
+        ? 'ZIP 다시 만들기'
+        : '사진 + manifest ZIP 만들기'
+  }
+
+  if (zipStatus) {
+    zipStatus.className = `zip-status ${exportStatusTone}`
+    zipStatus.textContent = exportIsBuilding
+      ? exportProgress?.message ?? 'ZIP을 만들고 있습니다.'
+      : exportResult
+        ? `${exportResult.fileName} 준비 완료 · ZIP은 Android 공유 제한으로 기기에 저장합니다.`
+        : '먼저 ZIP을 만든 뒤 저장하세요. 사진 공유창은 별도로 사용할 수 있습니다.'
+  }
 
   if (allShareButton) {
     allShareButton.textContent = shareFilesLoading
@@ -1181,6 +1216,23 @@ function bindCameraEvents(): void {
   app.querySelector('[data-action="retake"]')?.addEventListener('click', () => {
     void captureForCurrentBox('retake')
   })
+
+  app.querySelector('[data-action="prepare-zip"]')?.addEventListener('click', () => {
+    void startSessionExport()
+  })
+
+  app
+    .querySelector('[data-action="save-prepared-zip"]')
+    ?.addEventListener('click', () => {
+      if (!exportResult) {
+        return
+      }
+
+      downloadBlob(exportResult.blob, exportResult.fileName)
+      exportStatusMessage = 'ZIP 다운로드를 시작했습니다.'
+      exportStatusTone = 'running'
+      render()
+    })
 
   app
     .querySelector('[data-action="share-current-photo"]')
