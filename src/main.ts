@@ -1026,15 +1026,15 @@ function render(): void {
 
       <section class="status-strip" aria-label="세션 상태">
         <div>
-          <span>카트 번호</span>
+          <span>카트</span>
           <strong>${cart.cartNo}</strong>
         </div>
         <div>
-          <span>박스 진행</span>
-          <strong>현재 ${currentBox.boxNo}번 · ${capturedCount}개 완료</strong>
+          <span>박스</span>
+          <strong>${currentBox.boxNo}/${cart.boxes.length} · ${capturedCount}완료</strong>
         </div>
         <div>
-          <span>이 세션 촬영</span>
+          <span>저장</span>
           <strong>${escapeHtml(sessionSavedPhotos)}</strong>
         </div>
         <button class="status-next-cart" type="button" data-action="next-cart">
