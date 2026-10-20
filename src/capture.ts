@@ -16,7 +16,7 @@ export type CapturedImage = {
 }
 
 export const DEFAULT_CAPTURE_OPTIONS: CaptureOptions = {
-  // 스트림이 4:3 고해상도(최대 4032)로 협상될 수 있어 깎지 않도록 여유
+  // 기기의 원본 비율을 유지하고 고해상도 센서의 출력만 제한한다.
   maxLongEdge: 4096,
   jpegQuality: 0.96,
 }
@@ -55,40 +55,54 @@ function clampToRange(value: number, range?: MediaSettingsRange): number {
 
 async function captureProcessedStill(
   stream: MediaStream,
+  maxLongEdge: number,
 ): Promise<ImageBitmap | null> {
   const ImageCaptureClass = (
     globalThis as typeof globalThis & { ImageCapture?: ImageCaptureConstructor }
   ).ImageCapture
   const track = stream.getVideoTracks()[0]
 
-  if (!ImageCaptureClass || !track || track.readyState !== 'live') {
+  if (
+    !ImageCaptureClass ||
+    typeof createImageBitmap !== 'function' ||
+    !track ||
+    track.readyState !== 'live'
+  ) {
     return null
   }
 
   try {
     const imageCapture = new ImageCaptureClass(track)
-    const capabilities = imageCapture.getPhotoCapabilities
-      ? await imageCapture.getPhotoCapabilities()
-      : null
-    const trackSettings = track.getSettings()
-    const capabilityWidth = capabilities?.imageWidth?.max
-    const capabilityHeight = capabilities?.imageHeight?.max
-    const referenceWidth = capabilityWidth ?? trackSettings.width ?? 4032
-    const referenceHeight = capabilityHeight ?? trackSettings.height ?? 3024
-    const longEdge = Math.min(Math.max(referenceWidth, referenceHeight), 4032)
-    const shortEdge = Math.round(longEdge * 0.75)
-    const sensorIsLandscape = referenceWidth >= referenceHeight
-    const requestedWidth = sensorIsLandscape ? longEdge : shortEdge
-    const requestedHeight = sensorIsLandscape ? shortEdge : longEdge
-    const blob = await imageCapture.takePhoto({
-      imageWidth: clampToRange(requestedWidth, capabilities?.imageWidth),
-      imageHeight: clampToRange(requestedHeight, capabilities?.imageHeight),
-    })
+    // 기능 조회만 실패하는 부분 지원 브라우저에서도 기본 정지사진은 시도한다.
+    const capabilities = await imageCapture.getPhotoCapabilities?.().catch(() => null)
+    const maximumWidth = capabilities?.imageWidth?.max
+    const maximumHeight = capabilities?.imageHeight?.max
+    let blob: Blob
+
+    if (maximumWidth && maximumHeight) {
+      // 사진 센서와 회전된 미리보기의 방향은 다를 수 있다. 사진 범위를 기준으로
+      // 비율을 유지하고, 제조사가 조합을 거부하면 기본 사진 설정으로 재시도한다.
+      const ratio = maximumWidth / maximumHeight
+      const height = Math.min(
+        maximumHeight,
+        maximumWidth / ratio,
+        maxLongEdge / Math.max(1, ratio),
+      )
+      try {
+        blob = await imageCapture.takePhoto({
+          imageWidth: clampToRange(height * ratio, capabilities?.imageWidth),
+          imageHeight: clampToRange(height, capabilities?.imageHeight),
+        })
+      } catch {
+        blob = await imageCapture.takePhoto()
+      }
+    } else {
+      blob = await imageCapture.takePhoto()
+    }
 
     return await createImageBitmap(blob, { imageOrientation: 'from-image' })
   } catch (error) {
-    // 부분 지원 브라우저나 제조사 카메라가 PhotoSettings를 거부하면
-    // 같은 고해상도 스트림 프레임으로 안전하게 폴백한다.
+    // 정지사진 촬영/디코딩을 지원하지 않으면 영상 프레임을 사용한다.
     console.warn('Processed still capture failed; using video frame', error)
     return null
   }
@@ -149,14 +163,17 @@ export async function captureCameraImage(
     throw new Error('카메라 영상이 아직 준비되지 않았습니다')
   }
 
-  // Android/Chromium에서는 동영상 프레임보다 제조사 ISP의 노이즈 제거와
-  // 정지사진 처리가 적용되는 ImageCapture를 우선한다. Safari는 기존 프레임
-  // 캡처로 폴백하므로 iPhone 호환성도 유지된다.
-  const frame =
-    (await captureProcessedStill(stream)) ??
-    (await createImageBitmap(videoElement))
-  const originalWidth = frame.width
-  const originalHeight = frame.height
+  if (stream.getVideoTracks()[0]?.readyState !== 'live' || videoElement.readyState < 2) {
+    throw new Error('카메라 연결이 끊겼습니다. 카메라를 다시 시작해 주세요.')
+  }
+
+  const frame = await captureProcessedStill(stream, options.maxLongEdge)
+  if (!frame && (stream.getVideoTracks()[0]?.readyState !== 'live' || videoElement.readyState < 2)) {
+    throw new Error('카메라 연결이 끊겼습니다. 카메라를 다시 시작해 주세요.')
+  }
+  // 영상은 직접 canvas에 그려 createImageBitmap(video) 미지원 기기도 처리한다.
+  const originalWidth = frame?.width ?? videoElement.videoWidth
+  const originalHeight = frame?.height ?? videoElement.videoHeight
 
   const { width, height } = resizeDimensions(
     originalWidth,
@@ -169,30 +186,32 @@ export async function captureCameraImage(
 
   const context = canvas.getContext('2d')
 
-  if (!context) {
-    frame.close()
-    throw new Error('캔버스 작업 영역을 만들 수 없습니다')
-  }
+  try {
+    if (!context) {
+      throw new Error('캔버스 작업 영역을 만들 수 없습니다')
+    }
 
-  context.imageSmoothingEnabled = true
-  context.imageSmoothingQuality = 'high'
-  // 폴드 커버 미리보기는 중앙을 크게 보여 주지만 저장은 센서의 전체 3:4
-  // 프레임을 유지한다. label_scan의 기존 입력 범위와 검출률을 보존하기 위함이다.
-  context.drawImage(frame, 0, 0, width, height)
-  frame.close()
+    context.imageSmoothingEnabled = true
+    context.imageSmoothingQuality = 'high'
+    context.drawImage(frame ?? videoElement, 0, 0, width, height)
 
-  const blob = await canvasToJpegBlob(canvas, options.jpegQuality)
-  const objectUrl = createObjectUrl(blob)
+    const blob = await canvasToJpegBlob(canvas, options.jpegQuality)
+    const objectUrl = createObjectUrl(blob)
 
-  return {
-    blob,
-    objectUrl,
-    mimeType: 'image/jpeg',
-    width,
-    height,
-    originalWidth,
-    originalHeight,
-    sizeBytes: blob.size,
-    capturedAt: new Date().toISOString(),
+    return {
+      blob,
+      objectUrl,
+      mimeType: 'image/jpeg',
+      width,
+      height,
+      originalWidth,
+      originalHeight,
+      sizeBytes: blob.size,
+      capturedAt: new Date().toISOString(),
+    }
+  } finally {
+    frame?.close()
+    canvas.width = 0
+    canvas.height = 0
   }
 }

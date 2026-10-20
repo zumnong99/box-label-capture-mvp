@@ -24,7 +24,8 @@ html {
 
 body {
   margin: 0;
-  min-width: 320px;
+  min-width: 280px;
+  min-height: 100vh;
   min-height: 100svh;
   overscroll-behavior-y: contain;
 }
@@ -65,15 +66,22 @@ p {
 }
 
 .app-shell {
-  width: min(100%, 480px);
+  width: min(100%, 560px);
   min-height: 100svh;
   margin: 0 auto;
   padding:
-    calc(14px + env(safe-area-inset-top)) 14px
-    calc(18px + env(safe-area-inset-bottom));
+    calc(14px + env(safe-area-inset-top)) max(14px, env(safe-area-inset-right))
+    calc(18px + env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+[data-region] {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 12px;
 }
 
 .session-header {
@@ -155,6 +163,7 @@ p {
 }
 
 .camera-panel {
+  min-width: 0;
   overflow: hidden;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
@@ -164,8 +173,11 @@ p {
 
 .camera-preview-frame {
   position: relative;
-  width: 100%;
+  width: min(100%, calc(52vh * var(--camera-stream-ratio, 0.75)));
+  width: min(100%, calc(52svh * var(--camera-stream-ratio, 0.75)));
+  margin-inline: auto;
   min-height: 0;
+  overflow: hidden;
   aspect-ratio: var(--camera-stream-aspect, 3 / 4);
   background:
     linear-gradient(135deg, rgba(37, 99, 235, 0.25), transparent 45%),
@@ -200,7 +212,7 @@ p {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: min(70%, 240px);
+  width: min(var(--camera-guide-width, 70%), 320px);
   aspect-ratio: 1;
   border: 3px solid #facc15;
   border-radius: 8px;
@@ -283,6 +295,45 @@ p {
 .camera-controls button:disabled {
   color: #94a3b8;
   background: #334155;
+}
+
+.camera-device-control {
+  padding: 8px 12px 12px;
+  display: grid;
+  gap: 6px;
+  background: #0f172a;
+}
+
+.camera-device-control[hidden] {
+  display: none;
+}
+
+.camera-device-control label {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.camera-device-control select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px;
+  border: 1px solid #64748b;
+  border-radius: 8px;
+  color: #f8fafc;
+  background: #1e293b;
+  font: inherit;
+  font-size: 16px;
+}
+
+.camera-device-control select:focus-visible {
+  outline: 3px solid #38bdf8;
+  outline-offset: 2px;
+}
+
+.camera-device-control p {
+  color: #cbd5e1;
+  font-size: 12px;
 }
 
 .camera-instruction {
@@ -875,18 +926,14 @@ p {
   .app-shell {
     width: min(100%, 600px);
   }
-
-  .label-guide {
-    width: min(70%, 320px);
-  }
 }
 
-/* Galaxy Fold 커버 화면처럼 폭이 좁고 세로가 제한된 화면용 압축 레이아웃 */
+/* 기종과 관계없이 좁은 화면에서는 촬영 조작을 간결하게 배치한다. */
 @media (max-width: 599px) {
   .app-shell {
     padding:
-      calc(6px + env(safe-area-inset-top)) 8px
-      calc(10px + env(safe-area-inset-bottom));
+      calc(6px + env(safe-area-inset-top)) max(8px, env(safe-area-inset-right))
+      calc(10px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
     gap: 8px;
   }
 
@@ -924,7 +971,7 @@ p {
   }
 
   .quiet-button {
-    min-height: 32px;
+    min-height: 44px;
     padding: 0 8px;
     font-size: 12px;
   }
@@ -934,7 +981,7 @@ p {
   }
 
   .status-strip {
-    grid-template-columns: 58px minmax(88px, 1.4fr) 58px 72px;
+    grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.5fr) minmax(0, 0.75fr) minmax(64px, 1fr);
     gap: 4px;
   }
 
@@ -965,19 +1012,6 @@ p {
     padding: 0 4px;
     font-size: 13px;
     line-height: 1.15;
-  }
-
-  .camera-preview-frame {
-    height: auto;
-    aspect-ratio: 4 / 3;
-  }
-
-  .camera-preview {
-    object-fit: cover;
-  }
-
-  .label-guide {
-    width: min(68%, 300px);
   }
 
   .camera-status {
@@ -1024,7 +1058,7 @@ p {
 
 @media (max-width: 340px) {
   .status-strip {
-    grid-template-columns: 52px minmax(82px, 1fr) 52px 64px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .status-strip strong {
@@ -1033,5 +1067,38 @@ p {
 
   .status-next-cart {
     font-size: 12px;
+  }
+}
+
+/* 펼친 폴더블, 태블릿과 가로 화면은 촬영과 진행 정보를 나란히 표시한다. */
+@media (min-width: 760px) {
+  .app-shell {
+    width: min(100%, 1120px);
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    align-content: start;
+    align-items: start;
+  }
+
+  [data-region='top'] {
+    grid-column: 1 / -1;
+  }
+
+  .status-strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .camera-panel {
+    grid-column: 1;
+  }
+
+  [data-region='bottom'] {
+    grid-column: 2;
+  }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  [data-region='top'] {
+    position: static;
   }
 }

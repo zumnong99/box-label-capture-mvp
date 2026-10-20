@@ -1,5 +1,6 @@
 import './style.css'
 import {
+  getAvailableCameras,
   isCameraSupported,
   isSecureContextForCamera,
   startCameraPreview,
@@ -56,7 +57,7 @@ type ManifestPreviewMode = 'json' | 'csv'
 type StatusTone = 'idle' | 'loading' | 'running' | 'warning' | 'error'
 
 const appElement = document.querySelector<HTMLDivElement>('#app')
-const APP_BUILD_LABEL = 'box-label-capture-mvp android-zip-share-20260811'
+const APP_BUILD_LABEL = 'box-label-capture-mvp adaptive-camera-20261020'
 
 if (!appElement) {
   throw new Error('앱 루트 요소를 찾을 수 없습니다.')
@@ -71,6 +72,10 @@ let cameraStream: MediaStream | null = null
 let cameraStatusMessage = '카메라 대기 중'
 let cameraStatusTone: StatusTone = 'idle'
 let cameraIsStarting = false
+let cameraRequestId = 0
+let cameraStartController: AbortController | null = null
+let cameraDevices: MediaDeviceInfo[] = []
+let selectedCameraId = ''
 let captureIsRunning = false
 let captureStatusMessage = ''
 let captureStatusTone: StatusTone = 'idle'
@@ -179,7 +184,7 @@ function isWebShareSupported(): boolean {
 
 function isFileShareSupported(): boolean {
   try {
-    return canSharePhotoFiles([
+    return isWebShareSupported() && canSharePhotoFiles([
       new File(['diagnostic'], 'diagnostic.jpg', {
         type: 'image/jpeg',
       }),
@@ -226,6 +231,14 @@ function renderDiagnosticsPanel(): string {
         <div>
           <dt>카메라 API</dt>
           <dd>${formatYesNo(isCameraSupported())}</dd>
+        </div>
+        <div>
+          <dt>선택된 카메라</dt>
+          <dd>${escapeHtml(cameraStream?.getVideoTracks()[0]?.label || '자동 선택')}</dd>
+        </div>
+        <div>
+          <dt>카메라 해상도</dt>
+          <dd>${escapeHtml(formatCameraResolution())}</dd>
         </div>
         <div>
           <dt>IndexedDB</dt>
@@ -316,7 +329,7 @@ function setShareFiles(records: PersistedPhotoRecord[]): void {
   shareStatusMessage =
     shareFiles.length > 0
       ? `저장된 사진 ${shareFiles.length}장을 공유할 수 있습니다.`
-      : '촬영한 사진이 생기면 Android 공유창을 열 수 있습니다.'
+      : '촬영한 사진이 생기면 기기의 공유창을 열 수 있습니다.'
   shareStatusTone = shareFiles.length > 0 ? 'running' : 'idle'
 }
 
@@ -339,7 +352,7 @@ function getCurrentShareFile(): File | null {
   return shareFiles.find((file) => file.name === fileName) ?? null
 }
 
-function openAndroidShareSheet(files: File[], label: string): void {
+function openPhotoShareSheet(files: File[], label: string): void {
   if (files.length === 0) {
     shareStatusMessage = '먼저 사진을 촬영해 주세요.'
     shareStatusTone = 'warning'
@@ -350,8 +363,8 @@ function openAndroidShareSheet(files: File[], label: string): void {
   if (!canSharePhotoFiles(files)) {
     shareStatusMessage =
       files.length > 1
-        ? '이 브라우저는 여러 장 공유를 지원하지 않습니다. 현재 사진 공유를 이용해 주세요.'
-        : '파일 공유를 지원하는 Chrome 또는 Samsung Internet에서 열어 주세요.'
+        ? '이 브라우저는 여러 장 공유를 지원하지 않습니다. 현재 사진 공유 또는 ZIP 저장을 이용해 주세요.'
+        : '이 브라우저는 사진 파일 공유를 지원하지 않습니다. ZIP으로 저장해 주세요.'
     shareStatusTone = 'warning'
     updateCameraPanel()
     return
@@ -360,7 +373,7 @@ function openAndroidShareSheet(files: File[], label: string): void {
   // 사용자 탭 권한이 유지된 상태에서 share()를 먼저 호출한 다음 UI를 갱신한다.
   const sharePromise = sharePhotoFiles(files, `${session.sessionId} ${label}`)
   shareIsRunning = true
-  shareStatusMessage = 'Android 공유창을 여는 중입니다.'
+  shareStatusMessage = '기기의 공유창을 여는 중입니다.'
   shareStatusTone = 'loading'
   updateCameraPanel()
 
@@ -378,7 +391,7 @@ function openAndroidShareSheet(files: File[], label: string): void {
       } else {
         console.error('Photo share failed', error)
         shareStatusMessage =
-          '공유창을 열지 못했습니다. Chrome 또는 Samsung Internet에서 다시 시도해 주세요.'
+          '공유창을 열지 못했습니다. 기기의 기본 브라우저에서 다시 시도하거나 ZIP으로 저장해 주세요.'
         shareStatusTone = 'error'
       }
     })
@@ -622,7 +635,7 @@ function syncCameraVideo(): void {
     videoElement.play().catch((error: unknown) => {
       console.error('Camera preview playback failed', error)
     })
-  } else if (!cameraStream && videoElement.srcObject) {
+  } else if (!cameraStream && !cameraIsStarting && videoElement.srcObject) {
     // persistent video 라 노드가 재생성되지 않으므로, 카메라를 멈추면
     // 마지막 프레임이 빈 화면 오버레이 뒤에 남지 않도록 직접 비운다.
     videoElement.srcObject = null
@@ -633,15 +646,77 @@ function stopActiveCamera(
   message = '카메라 대기 중',
   shouldRender = true,
 ): void {
+  cameraRequestId += 1
+  cameraStartController?.abort()
+  cameraStartController = null
   stopCameraPreview(cameraStream)
   cameraStream = null
   cameraIsStarting = false
   cameraStatusMessage = message
   cameraStatusTone = 'idle'
+  const video = app.querySelector<HTMLVideoElement>('[data-camera-preview]')
+  if (video) {
+    video.srcObject = null
+    video.parentElement?.style.removeProperty('--camera-stream-aspect')
+    video.parentElement?.style.removeProperty('--camera-stream-ratio')
+    video.parentElement?.style.removeProperty('--camera-guide-width')
+  }
 
   if (shouldRender) {
     render()
   }
+}
+
+function formatCameraResolution(): string {
+  const video = app.querySelector<HTMLVideoElement>('[data-camera-preview]')
+  return video?.videoWidth && video.videoHeight
+    ? `${video.videoWidth} × ${video.videoHeight}`
+    : '카메라 대기 중'
+}
+
+async function refreshCameraDevices(): Promise<void> {
+  cameraDevices = await getAvailableCameras()
+  updateCameraPanel()
+}
+
+async function startSelectedCamera(): Promise<void> {
+  if (cameraIsStarting || captureIsRunning) return
+  stopActiveCamera('카메라를 준비하고 있습니다.', false)
+  const requestId = cameraRequestId
+  const video = app.querySelector<HTMLVideoElement>('[data-camera-preview]')
+  if (!video) return
+
+  cameraIsStarting = true
+  cameraStartController = new AbortController()
+  cameraStatusMessage = '카메라 권한과 기기 설정을 확인하고 있습니다.'
+  cameraStatusTone = 'loading'
+  render()
+
+  const result = await startCameraPreview(video, selectedCameraId || undefined, cameraStartController.signal)
+  // 페이지를 나가거나 시작을 취소한 뒤 도착한 권한 응답은 사용하지 않는다.
+  if (requestId !== cameraRequestId) {
+    if (result.ok) {
+      stopCameraPreview(result.stream)
+      if (video.srcObject === result.stream) video.srcObject = null
+    }
+    return
+  }
+
+  cameraIsStarting = false
+  cameraStartController = null
+  cameraStream = result.stream
+  cameraStatusMessage = result.message
+  cameraStatusTone = result.ok ? 'running' : 'error'
+  if (result.ok) {
+    const stream = result.stream
+    stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+      if (cameraStream === stream) {
+        stopActiveCamera('카메라 연결이 끊겼습니다. 카메라를 다시 시작해 주세요.')
+      }
+    }, { once: true })
+    void refreshCameraDevices()
+  }
+  render()
 }
 
 async function captureForCurrentBox(mode: 'capture' | 'retake'): Promise<void> {
@@ -661,7 +736,7 @@ async function captureForCurrentBox(mode: 'capture' | 'retake'): Promise<void> {
   }
 
   captureIsRunning = true
-  captureStatusMessage = '폴드8 고화질 사진을 처리하는 중입니다.'
+  captureStatusMessage = '사진을 촬영하고 저장하는 중입니다.'
   captureStatusTone = 'loading'
   render()
 
@@ -848,7 +923,7 @@ async function resetSession(): Promise<void> {
   shareFiles = []
   shareFilesLoading = false
   shareIsRunning = false
-  shareStatusMessage = '촬영한 사진이 생기면 Android 공유창을 열 수 있습니다.'
+  shareStatusMessage = '촬영한 사진이 생기면 기기의 공유창을 열 수 있습니다.'
   shareStatusTone = 'idle'
   photoRestoreCompleted = true
   diagnosticsPhotoCount = 0
@@ -954,6 +1029,11 @@ function buildShell(): void {
             카메라 중지
           </button>
         </div>
+        <div class="camera-device-control" data-camera-device-control hidden>
+          <label for="camera-device">카메라 선택</label>
+          <select id="camera-device" data-camera-device aria-describedby="camera-device-hint"></select>
+          <p id="camera-device-hint">초점이 잘 맞지 않으면 다른 후면 카메라를 선택해 보세요.</p>
+        </div>
         <p class="camera-instruction">라벨 전체가 정사각형 안에 들어오게 촬영</p>
         <div class="camera-share-bar">
           <div class="camera-zip-actions">
@@ -987,6 +1067,25 @@ function buildShell(): void {
 
 function updateCameraPanel(): void {
   const hasCameraStream = cameraStream !== null
+  const fileSharingAvailable = isFileShareSupported()
+
+  const deviceControl = app.querySelector<HTMLElement>('[data-camera-device-control]')
+  const deviceSelect = app.querySelector<HTMLSelectElement>('[data-camera-device]')
+  if (deviceControl && deviceSelect) {
+    deviceControl.hidden = cameraDevices.length < 2 && !selectedCameraId
+    const options = [new Option('자동 선택 · 후면 우선', ''), ...cameraDevices.map(
+      (device, index) => new Option(device.label || `카메라 ${index + 1}`, device.deviceId),
+    )]
+    if (selectedCameraId && !cameraDevices.some((device) => device.deviceId === selectedCameraId)) {
+      options.push(new Option('선택한 카메라 · 연결 확인 필요', selectedCameraId))
+    }
+    // 다른 상태 갱신 중에 사용자가 열어 둔 선택 목록을 재생성하지 않는다.
+    if (deviceSelect.innerHTML !== options.map((option) => option.outerHTML).join('')) {
+      deviceSelect.replaceChildren(...options)
+    }
+    deviceSelect.value = selectedCameraId
+    deviceSelect.disabled = cameraIsStarting || captureIsRunning
+  }
 
   const emptyEl = app.querySelector<HTMLElement>('[data-camera-empty]')
   if (emptyEl) {
@@ -1010,8 +1109,12 @@ function updateCameraPanel(): void {
 
   setDisabled('capture', !hasCameraStream || captureIsRunning)
   setDisabled('retake', !hasCameraStream || captureIsRunning)
-  setDisabled('camera-start', hasCameraStream || cameraIsStarting)
-  setDisabled('camera-stop', !hasCameraStream)
+  setDisabled('camera-start', hasCameraStream || cameraIsStarting || captureIsRunning)
+  setDisabled('camera-stop', (!hasCameraStream && !cameraIsStarting) || captureIsRunning)
+  // 처리 중 박스가 바뀌어 사진과 진행 상태가 다른 박스에 기록되지 않게 한다.
+  for (const action of ['previous', 'next', 'next-cart', 'reset']) {
+    if (captureIsRunning) setDisabled(action, true)
+  }
   setDisabled(
     'prepare-zip',
     exportIsBuilding || shareFilesLoading || shareFiles.length === 0,
@@ -1020,11 +1123,11 @@ function updateCameraPanel(): void {
   const currentShareFile = getCurrentShareFile()
   setDisabled(
     'share-current-photo',
-    shareFilesLoading || shareIsRunning || currentShareFile === null,
+    !fileSharingAvailable || shareFilesLoading || shareIsRunning || currentShareFile === null,
   )
   setDisabled(
     'share-all-photos',
-    shareFilesLoading || shareIsRunning || shareFiles.length === 0,
+    !fileSharingAvailable || shareFilesLoading || shareIsRunning || shareFiles.length === 0,
   )
 
   const allShareButton = app.querySelector<HTMLButtonElement>(
@@ -1049,7 +1152,7 @@ function updateCameraPanel(): void {
     zipStatus.textContent = exportIsBuilding
       ? exportProgress?.message ?? 'ZIP을 만들고 있습니다.'
       : exportResult
-        ? `${exportResult.fileName} 준비 완료 · ZIP은 Android 공유 제한으로 기기에 저장합니다.`
+        ? `${exportResult.fileName} 준비 완료 · ZIP을 기기에 저장해 주세요.`
         : '먼저 ZIP을 만든 뒤 저장하세요. 사진 공유창은 별도로 사용할 수 있습니다.'
   }
 
@@ -1063,9 +1166,11 @@ function updateCameraPanel(): void {
 
   if (shareStatus) {
     shareStatus.className = `share-status ${shareStatusTone}`
-    shareStatus.textContent = shareFilesLoading
-      ? '저장된 사진을 확인하고 있습니다.'
-      : shareStatusMessage
+    shareStatus.textContent = !fileSharingAvailable
+      ? '이 브라우저에서는 사진 공유 대신 ZIP으로 저장해 주세요.'
+      : shareFilesLoading
+        ? '저장된 사진을 확인하고 있습니다.'
+        : shareStatusMessage
   }
 }
 
@@ -1165,45 +1270,14 @@ function render(): void {
 function bindCameraEvents(): void {
   app
     .querySelector('[data-action="camera-start"]')
-    ?.addEventListener('click', async () => {
-      const videoElement =
-        app.querySelector<HTMLVideoElement>('[data-camera-preview]')
-
-      if (!videoElement || cameraIsStarting || cameraStream) {
-        return
-      }
-
-      cameraIsStarting = true
-      cameraStatusMessage = '카메라 권한 요청 중'
-      cameraStatusTone = 'loading'
-      render()
-
-      const activeVideoElement =
-        app.querySelector<HTMLVideoElement>('[data-camera-preview]')
-
-      if (!activeVideoElement) {
-        cameraIsStarting = false
-        cameraStatusMessage = '카메라 화면을 준비할 수 없습니다'
-        cameraStatusTone = 'error'
-        render()
-        return
-      }
-
-      const result = await startCameraPreview(activeVideoElement)
-      cameraIsStarting = false
-
-      if (result.ok) {
-        cameraStream = result.stream
-        cameraStatusMessage = result.message
-        cameraStatusTone = 'running'
-      } else {
-        cameraStream = null
-        cameraStatusMessage = result.message
-        cameraStatusTone = 'error'
-      }
-
-      render()
+    ?.addEventListener('click', () => {
+      void startSelectedCamera()
     })
+
+  app.querySelector<HTMLSelectElement>('[data-camera-device]')?.addEventListener('change', (event) => {
+    selectedCameraId = (event.currentTarget as HTMLSelectElement).value
+    if (cameraStream) void startSelectedCamera()
+  })
 
   app.querySelector('[data-action="camera-stop"]')?.addEventListener('click', () => {
     stopActiveCamera()
@@ -1238,13 +1312,13 @@ function bindCameraEvents(): void {
     .querySelector('[data-action="share-current-photo"]')
     ?.addEventListener('click', () => {
       const currentFile = getCurrentShareFile()
-      openAndroidShareSheet(currentFile ? [currentFile] : [], '현재 사진')
+      openPhotoShareSheet(currentFile ? [currentFile] : [], '현재 사진')
     })
 
   app
     .querySelector('[data-action="share-all-photos"]')
     ?.addEventListener('click', () => {
-      openAndroidShareSheet(shareFiles, `전체 사진 ${shareFiles.length}장`)
+      openPhotoShareSheet(shareFiles, `전체 사진 ${shareFiles.length}장`)
     })
 }
 
@@ -1306,7 +1380,14 @@ saveSession(session)
 render()
 void restorePersistedPhotosForSession()
 
-window.addEventListener('beforeunload', () => {
+window.addEventListener('pagehide', () => {
   stopActiveCamera('카메라 대기 중', false)
-  clearCapturedImages()
+})
+
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted) render()
+})
+
+navigator.mediaDevices?.addEventListener?.('devicechange', () => {
+  if (cameraDevices.length || cameraStream) void refreshCameraDevices()
 })
