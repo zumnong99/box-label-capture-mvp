@@ -172,9 +172,11 @@ p {
 }
 
 .camera-preview-frame {
+  --camera-reserved-space: 390px;
   position: relative;
-  width: min(100%, calc(52vh * var(--camera-stream-ratio, 0.75)));
-  width: min(100%, calc(52svh * var(--camera-stream-ratio, 0.75)));
+  /* 상단 상태와 촬영 버튼 공간을 남기고 나머지는 미리보기에 사용한다. */
+  width: min(100%, calc(max(52vh, 100vh - var(--camera-reserved-space)) * var(--camera-stream-ratio, 0.75)));
+  width: min(100%, calc(max(52svh, 100svh - var(--camera-reserved-space)) * var(--camera-stream-ratio, 0.75)));
   margin-inline: auto;
   min-height: 0;
   overflow: hidden;
@@ -930,6 +932,10 @@ p {
 
 /* 기종과 관계없이 좁은 화면에서는 촬영 조작을 간결하게 배치한다. */
 @media (max-width: 599px) {
+  .camera-preview-frame {
+    --camera-reserved-space: calc(232px + env(safe-area-inset-top) + env(safe-area-inset-bottom));
+  }
+
   .app-shell {
     padding:
       calc(6px + env(safe-area-inset-top)) max(8px, env(safe-area-inset-right))
@@ -1057,6 +1063,10 @@ p {
 }
 
 @media (max-width: 340px) {
+  .camera-preview-frame {
+    --camera-reserved-space: calc(282px + env(safe-area-inset-top) + env(safe-area-inset-bottom));
+  }
+
   .status-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1090,6 +1100,10 @@ p {
 
   .camera-panel {
     grid-column: 1;
+  }
+
+  .camera-preview-frame {
+    --camera-reserved-space: 312px;
   }
 
   [data-region='bottom'] {

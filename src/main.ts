@@ -57,7 +57,7 @@ type ManifestPreviewMode = 'json' | 'csv'
 type StatusTone = 'idle' | 'loading' | 'running' | 'warning' | 'error'
 
 const appElement = document.querySelector<HTMLDivElement>('#app')
-const APP_BUILD_LABEL = 'box-label-capture-mvp adaptive-camera-20261020'
+const APP_BUILD_LABEL = 'box-label-capture-mvp larger-preview-20261020'
 
 if (!appElement) {
   throw new Error('앱 루트 요소를 찾을 수 없습니다.')
