@@ -1,4 +1,4 @@
-import { createObjectUrl, DEFAULT_CAPTURE_OPTIONS, encodeCameraFrame } from './capture'
+import { captureCameraPhotoBlob, createObjectUrl, DEFAULT_CAPTURE_OPTIONS, encodeCameraFrame } from './capture'
 import type { CapturedImage, CaptureOptions } from './capture'
 import { readJpegMetadata } from './jpeg-metadata'
 
@@ -7,6 +7,40 @@ export type PreparedPhoto = {
   image: CapturedImage
   usedOriginal: boolean
   fallbackReason: string | null
+}
+
+function assertCameraReady(video: HTMLVideoElement, stream: MediaStream): void {
+  if (video.videoWidth === 0 || video.videoHeight === 0) {
+    throw new Error('카메라 영상이 아직 준비되지 않았습니다')
+  }
+  if (stream.getVideoTracks()[0]?.readyState !== 'live' || video.readyState < 2) {
+    throw new Error('카메라 연결이 끊겼습니다. 카메라를 다시 시작해 주세요.')
+  }
+}
+
+// Production capture uses the same original-first preparation as the experiment.
+// Decode/encode only when the returned JPEG needs normalization or resizing.
+export async function capturePhotoForStorage(
+  video: HTMLVideoElement,
+  stream: MediaStream,
+  options: CaptureOptions = DEFAULT_CAPTURE_OPTIONS,
+): Promise<PreparedPhoto> {
+  assertCameraReady(video, stream)
+  const photo = await captureCameraPhotoBlob(stream, options.maxLongEdge)
+  if (photo) {
+    try {
+      return await preparePhoto(photo, 'original', options)
+    } catch (error) {
+      console.warn('Still preparation failed; using video frame', error)
+    }
+  }
+
+  assertCameraReady(video, stream)
+  return {
+    image: await encodeCameraFrame(video, video.videoWidth, video.videoHeight, options),
+    usedOriginal: false,
+    fallbackReason: '정지사진을 사용할 수 없어 영상 프레임으로 저장',
+  }
 }
 
 export async function preparePhoto(

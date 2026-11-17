@@ -6,7 +6,7 @@ import {
   startCameraPreview,
   stopCameraPreview,
 } from './camera'
-import { captureCameraImage } from './capture'
+import { capturePhotoForStorage } from './photo-preparation'
 import {
   buildSessionZip,
   collectExportSummary,
@@ -57,7 +57,7 @@ type ManifestPreviewMode = 'json' | 'csv'
 type StatusTone = 'idle' | 'loading' | 'running' | 'warning' | 'error'
 
 const appElement = document.querySelector<HTMLDivElement>('#app')
-const APP_BUILD_LABEL = 'box-label-capture-mvp speed-comparison-20261117'
+const APP_BUILD_LABEL = 'box-label-capture-mvp original-photo-20261117'
 
 if (!appElement) {
   throw new Error('앱 루트 요소를 찾을 수 없습니다.')
@@ -77,6 +77,7 @@ let cameraStartController: AbortController | null = null
 let cameraDevices: MediaDeviceInfo[] = []
 let selectedCameraId = ''
 let captureIsRunning = false
+let lastCaptureStorageMode = '촬영 전'
 let captureStatusMessage = ''
 let captureStatusTone: StatusTone = 'idle'
 let photoStorageStatusMessage = isIndexedDbSupported()
@@ -240,6 +241,10 @@ function renderDiagnosticsPanel(): string {
         <div>
           <dt>카메라 해상도</dt>
           <dd>${escapeHtml(formatCameraResolution())}</dd>
+        </div>
+        <div>
+          <dt>최근 촬영 저장 방식</dt>
+          <dd data-capture-storage-mode>${escapeHtml(lastCaptureStorageMode)}</dd>
         </div>
         <div>
           <dt>IndexedDB</dt>
@@ -742,7 +747,11 @@ async function captureForCurrentBox(mode: 'capture' | 'retake'): Promise<void> {
   render()
 
   try {
-    const image = await captureCameraImage(videoElement, cameraStream)
+    const prepared = await capturePhotoForStorage(videoElement, cameraStream)
+    const image = prepared.image
+    lastCaptureStorageMode = prepared.usedOriginal
+      ? '원본 JPEG 저장'
+      : `JPEG 변환 · ${prepared.fallbackReason ?? '이미지 변환 필요'}`
     const key = getCapturedImageKey(session.sessionId, cart.cartNo, currentBox.boxNo)
     const nextRetakeCount =
       mode === 'retake' && currentBox.status === 'captured'
@@ -911,6 +920,7 @@ async function resetSession(): Promise<void> {
 
   clearStoredSession()
   clearCapturedImages()
+  lastCaptureStorageMode = '촬영 전'
   exportPanelVisible = false
   manifestMode = 'json'
   captureStatusMessage = ''
