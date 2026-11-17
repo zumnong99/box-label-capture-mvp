@@ -11,6 +11,7 @@ export type CapturedImage = {
   height: number
   originalWidth: number
   originalHeight: number
+  exifOrientation?: number
   sizeBytes: number
   capturedAt: string
 }
@@ -236,6 +237,7 @@ export async function encodeCameraFrame(
       height,
       originalWidth,
       originalHeight,
+      exifOrientation: 1,
       sizeBytes: blob.size,
       capturedAt: new Date().toISOString(),
     }

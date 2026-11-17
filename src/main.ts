@@ -57,7 +57,7 @@ type ManifestPreviewMode = 'json' | 'csv'
 type StatusTone = 'idle' | 'loading' | 'running' | 'warning' | 'error'
 
 const appElement = document.querySelector<HTMLDivElement>('#app')
-const APP_BUILD_LABEL = 'box-label-capture-mvp original-photo-20261117'
+const APP_BUILD_LABEL = 'box-label-capture-mvp exif-original-20261117'
 
 if (!appElement) {
   throw new Error('앱 루트 요소를 찾을 수 없습니다.')
@@ -137,12 +137,14 @@ function getImageMetadata(image: CapturedImage): {
   imageWidth: number
   imageHeight: number
   imageSizeBytes: number
+  imageExifOrientation: number
   mimeType: 'image/jpeg'
 } {
   return {
     imageWidth: image.width,
     imageHeight: image.height,
     imageSizeBytes: image.sizeBytes,
+    imageExifOrientation: image.exifOrientation ?? 1,
     mimeType: image.mimeType,
   }
 }
@@ -750,7 +752,7 @@ async function captureForCurrentBox(mode: 'capture' | 'retake'): Promise<void> {
     const prepared = await capturePhotoForStorage(videoElement, cameraStream)
     const image = prepared.image
     lastCaptureStorageMode = prepared.usedOriginal
-      ? '원본 JPEG 저장'
+      ? `원본 JPEG 저장${(image.exifOrientation ?? 1) === 1 ? '' : ` · EXIF ${image.exifOrientation} 보존`}`
       : `JPEG 변환 · ${prepared.fallbackReason ?? '이미지 변환 필요'}`
     const key = getCapturedImageKey(session.sessionId, cart.cartNo, currentBox.boxNo)
     const nextRetakeCount =

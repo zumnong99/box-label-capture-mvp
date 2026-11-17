@@ -47,6 +47,7 @@ function createBox(cartNo: string, boxNo: number): BoxState {
     imageWidth: null,
     imageHeight: null,
     imageSizeBytes: null,
+    imageExifOrientation: null,
     mimeType: null,
   }
 }
@@ -215,6 +216,7 @@ export function captureCurrentBox(
     imageWidth: number
     imageHeight: number
     imageSizeBytes: number
+    imageExifOrientation?: number
     mimeType: 'image/jpeg'
   },
 ): SessionState {
@@ -231,6 +233,9 @@ export function captureCurrentBox(
             imageSizeBytes:
               imageMetadata?.imageSizeBytes ?? box.imageSizeBytes ?? null,
             mimeType: imageMetadata?.mimeType ?? box.mimeType ?? null,
+            imageExifOrientation: imageMetadata
+              ? imageMetadata.imageExifOrientation ?? 1
+              : box.imageExifOrientation ?? 1,
           }
         : box,
     )
@@ -265,6 +270,7 @@ export function retakeCurrentBox(
     imageWidth: number
     imageHeight: number
     imageSizeBytes: number
+    imageExifOrientation?: number
     mimeType: 'image/jpeg'
   },
 ): SessionState {
@@ -283,6 +289,9 @@ export function retakeCurrentBox(
             imageSizeBytes:
               imageMetadata?.imageSizeBytes ?? box.imageSizeBytes ?? null,
             mimeType: imageMetadata?.mimeType ?? box.mimeType ?? null,
+            imageExifOrientation: imageMetadata
+              ? imageMetadata.imageExifOrientation ?? 1
+              : box.imageExifOrientation ?? 1,
           }
         : box,
     )

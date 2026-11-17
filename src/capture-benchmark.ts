@@ -63,7 +63,8 @@ export async function runCaptureBenchmark(
       await savePhoto(record, BENCHMARK_DATABASE)
       const saveEnd = performance.now()
       session = captureCurrentBox(session, image.capturedAt, {
-        imageWidth: image.width, imageHeight: image.height, imageSizeBytes: image.sizeBytes, mimeType: image.mimeType,
+        imageWidth: image.width, imageHeight: image.height, imageSizeBytes: image.sizeBytes,
+        imageExifOrientation: image.exifOrientation ?? 1, mimeType: image.mimeType,
       })
       const zipStart = performance.now()
       const archive = await buildSessionZip(session, undefined, BENCHMARK_DATABASE)

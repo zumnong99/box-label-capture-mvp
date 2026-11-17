@@ -667,6 +667,7 @@ p {
 }
 
 .photo-preview-image {
+  image-orientation: from-image;
   width: 100%;
   max-height: 260px;
   display: block;
@@ -1122,7 +1123,7 @@ p {
 .benchmark-shell p { line-height: 1.6; overflow-wrap: anywhere; }
 .benchmark-card { padding: 18px; border-radius: 16px; background: white; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
 .benchmark-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.benchmark-video, .benchmark-preview { max-height: 280px; max-width: 100%; border-radius: 8px; object-fit: contain; background: #111827; }
+.benchmark-video, .benchmark-preview { max-height: 280px; max-width: 100%; border-radius: 8px; object-fit: contain; background: #111827; image-orientation: from-image; }
 .benchmark-file { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .benchmark-file input { width: 100%; min-width: 0; }
 .benchmark-table-scroll { overflow-x: auto; margin: 14px 0; }

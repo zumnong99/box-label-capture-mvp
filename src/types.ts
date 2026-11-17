@@ -16,6 +16,7 @@ export interface BoxState {
   imageWidth?: number | null
   imageHeight?: number | null
   imageSizeBytes?: number | null
+  imageExifOrientation?: number | null
   mimeType?: 'image/jpeg' | null
 }
 

@@ -12,6 +12,7 @@ export interface ManifestBox {
   image_height: number | null
   image_size_bytes: number | null
   mime_type: string | null
+  exif_orientation: number | null
 }
 
 export interface ManifestCart {
@@ -54,6 +55,7 @@ export function buildManifest(
         image_height: box.imageHeight ?? null,
         image_size_bytes: box.imageSizeBytes ?? null,
         mime_type: box.mimeType ?? null,
+        exif_orientation: box.status === 'captured' ? box.imageExifOrientation ?? 1 : null,
       })),
     })),
   }
@@ -83,6 +85,7 @@ export function buildManifestCsv(
     'image_size_bytes',
     'mime_type',
     'exported_at',
+    'exif_orientation',
   ]
 
   const rows = session.carts.flatMap((cart) =>
@@ -102,6 +105,7 @@ export function buildManifestCsv(
         box.imageSizeBytes ?? null,
         box.mimeType ?? null,
         exportedAt,
+        box.status === 'captured' ? box.imageExifOrientation ?? 1 : null,
       ].map(escapeCsvValue),
     ),
   )

@@ -19,7 +19,7 @@ function assertCameraReady(video: HTMLVideoElement, stream: MediaStream): void {
 }
 
 // Production capture uses the same original-first preparation as the experiment.
-// Decode/encode only when the returned JPEG needs normalization or resizing.
+// Preserve EXIF orientation; decode/encode only for resizing or unreadable metadata.
 export async function capturePhotoForStorage(
   video: HTMLVideoElement,
   stream: MediaStream,
@@ -52,12 +52,12 @@ export async function preparePhoto(
   if (mode === 'original') {
     const metadata = await readJpegMetadata(blob)
     if (!metadata) fallbackReason = 'JPEG 크기·방향을 안전하게 확인할 수 없어 기존 변환 사용'
-    else if (metadata.orientation !== 1) fallbackReason = 'EXIF 회전·반전 정규화가 필요해 기존 변환 사용'
     else if (Math.max(metadata.width, metadata.height) > options.maxLongEdge) {
       fallbackReason = `${options.maxLongEdge}px 제한을 맞추기 위해 기존 변환 사용`
     } else {
       // No decode, resampling, or additional JPEG compression in this branch.
       const jpeg = blob.type === 'image/jpeg' ? blob : blob.slice(0, blob.size, 'image/jpeg')
+      const swapsAxes = metadata.orientation >= 5
       return {
         usedOriginal: true,
         fallbackReason: null,
@@ -65,10 +65,12 @@ export async function preparePhoto(
           blob: jpeg,
           objectUrl: createObjectUrl(jpeg),
           mimeType: 'image/jpeg',
-          width: metadata.width,
-          height: metadata.height,
+          // Match the displayed size after applying EXIF, without touching pixels.
+          width: swapsAxes ? metadata.height : metadata.width,
+          height: swapsAxes ? metadata.width : metadata.height,
           originalWidth: metadata.width,
           originalHeight: metadata.height,
+          exifOrientation: metadata.orientation,
           sizeBytes: jpeg.size,
           capturedAt: new Date().toISOString(),
         },

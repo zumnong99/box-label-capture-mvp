@@ -18,6 +18,7 @@ export type PersistedPhotoRecord = {
   height: number
   originalWidth: number
   originalHeight: number
+  exifOrientation?: number
   sizeBytes: number
   capturedAt: string
   retakeCount: number
@@ -55,6 +56,7 @@ export function buildPersistedPhotoRecord({
     height: image.height,
     originalWidth: image.originalWidth,
     originalHeight: image.originalHeight,
+    exifOrientation: image.exifOrientation ?? 1,
     sizeBytes: image.sizeBytes,
     capturedAt: image.capturedAt,
     retakeCount,
@@ -74,6 +76,7 @@ export function createCapturedImageFromRecord(
     height: record.height,
     originalWidth: record.originalWidth,
     originalHeight: record.originalHeight,
+    exifOrientation: record.exifOrientation ?? 1,
     sizeBytes: record.sizeBytes,
     capturedAt: record.capturedAt,
   }

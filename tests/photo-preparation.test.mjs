@@ -48,17 +48,22 @@ test('일반 촬영은 카메라 JPEG의 픽셀 크기와 바이트를 그대로
   } finally { URL.revokeObjectURL(result.image.objectUrl) }
 })
 
-test('회전이 필요한 정지사진은 방향을 반영해 변환하고 bitmap을 해제한다', async (t) => {
-  const fixture = setup(t, jpeg(640, 480, 6))
-  let closed = false
-  setGlobal(t, 'createImageBitmap', async () => ({ width: 480, height: 640, close() { closed = true } }))
-  const result = await capturePhotoForStorage(fixture.video, fixture.stream)
-  try {
-    assert.equal(result.usedOriginal, false)
-    assert.match(result.fallbackReason, /EXIF/)
-    assert.deepEqual([result.image.width, result.image.height], [480, 640])
-    assert.equal(closed, true)
-  } finally { URL.revokeObjectURL(result.image.objectUrl) }
+test('EXIF 회전·반전 8가지는 JPEG를 재변환하지 않고 표시 크기와 함께 보존한다', async (t) => {
+  setGlobal(t, 'createImageBitmap', () => { throw new Error('EXIF 원본 저장에서 디코딩하면 안 됨') })
+  for (let orientation = 1; orientation <= 8; orientation++) {
+    const photo = jpeg(640, 480, orientation)
+    const fixture = setup(t, photo)
+    const result = await capturePhotoForStorage(fixture.video, fixture.stream)
+    try {
+      assert.equal(result.usedOriginal, true)
+      assert.equal(result.image.blob, photo)
+      assert.equal(result.image.exifOrientation, orientation)
+      assert.equal(result.fallbackReason, null)
+      assert.deepEqual([result.image.width, result.image.height], orientation >= 5 ? [480, 640] : [640, 480])
+      assert.deepEqual([result.image.originalWidth, result.image.originalHeight], [640, 480])
+      assert.deepEqual(fixture.draws, [])
+    } finally { URL.revokeObjectURL(result.image.objectUrl) }
+  }
 })
 
 test('4096px 초과 정지사진은 기존 비율대로 축소한다', async (t) => {
@@ -84,11 +89,25 @@ test('정지사진 API가 없으면 현재 영상 프레임을 저장한다', as
 })
 
 test('정지사진 디코딩 실패는 영상으로 복구하지만 끊긴 영상은 저장하지 않는다', async (t) => {
-  const fixture = setup(t, jpeg(640, 480, 6))
+  const fixture = setup(t, new Blob(['unreadable JPEG metadata']))
   setGlobal(t, 'createImageBitmap', async () => { throw new Error('decode failed') })
   const result = await capturePhotoForStorage(fixture.video, fixture.stream)
   try { assert.equal(fixture.draws[0][0], fixture.video) }
   finally { URL.revokeObjectURL(result.image.objectUrl) }
   fixture.track.readyState = 'ended'
   await assert.rejects(capturePhotoForStorage(fixture.video, fixture.stream), /연결이 끊겼습니다/)
+})
+
+test('큰 회전 사진을 축소한 결과는 EXIF 방향 1로 정규화된다', async (t) => {
+  const fixture = setup(t, jpeg(4608, 3456, 6))
+  let closed = false
+  setGlobal(t, 'createImageBitmap', async () => ({ width: 3456, height: 4608, close() { closed = true } }))
+  const result = await capturePhotoForStorage(fixture.video, fixture.stream)
+  try {
+    assert.equal(result.usedOriginal, false)
+    assert.match(result.fallbackReason, /4096/)
+    assert.deepEqual([result.image.width, result.image.height], [3072, 4096])
+    assert.equal(result.image.exifOrientation, 1)
+    assert.equal(closed, true)
+  } finally { URL.revokeObjectURL(result.image.objectUrl) }
 })

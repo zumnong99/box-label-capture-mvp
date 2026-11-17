@@ -38,7 +38,7 @@ root.innerHTML = `
     <section class="benchmark-card">
       <h2>2. 같은 사진으로 비교</h2>
       <p>방식별 준비 실행 1회는 제외하고, 실행 순서를 번갈아 측정합니다.
-      회전 보정 또는 4096px 초과 축소가 필요하면 원본 우선도 기존 변환을 사용합니다.</p>
+      원본 우선은 사진의 회전 정보를 그대로 보존합니다. 4096px 초과 축소가 필요하면 기존 변환을 사용합니다.</p>
       <button class="primary-action" type="button" data-action="run" disabled>5회 속도 비교</button>
       <p data-progress role="status" aria-live="polite"></p>
       <div data-results></div>
