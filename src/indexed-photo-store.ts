@@ -79,13 +79,13 @@ export function createCapturedImageFromRecord(
   }
 }
 
-function openPhotoDatabase(): Promise<IDBDatabase> {
+function openPhotoDatabase(databaseName = DATABASE_NAME): Promise<IDBDatabase> {
   if (!isIndexedDbSupported()) {
     return Promise.reject(new Error('IndexedDB를 사용할 수 없습니다'))
   }
 
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION)
+    const request = indexedDB.open(databaseName, DATABASE_VERSION)
 
     request.onerror = () => {
       reject(new Error('사진 저장소를 열 수 없습니다'))
@@ -145,8 +145,9 @@ function transactionDone(transaction: IDBTransaction): Promise<void> {
 async function withPhotoStore<T>(
   mode: IDBTransactionMode,
   callback: (store: IDBObjectStore) => Promise<T>,
+  databaseName = DATABASE_NAME,
 ): Promise<T> {
-  const db = await openPhotoDatabase()
+  const db = await openPhotoDatabase(databaseName)
   const transaction = db.transaction(PHOTO_STORE_NAME, mode)
   const store = transaction.objectStore(PHOTO_STORE_NAME)
   const done = transactionDone(transaction)
@@ -167,10 +168,10 @@ async function withPhotoStore<T>(
   }
 }
 
-export async function savePhoto(record: PersistedPhotoRecord): Promise<void> {
+export async function savePhoto(record: PersistedPhotoRecord, databaseName = DATABASE_NAME): Promise<void> {
   await withPhotoStore('readwrite', async (store) => {
     await requestToPromise(store.put(record))
-  })
+  }, databaseName)
 }
 
 export async function getPhoto(
@@ -186,13 +187,14 @@ export async function getPhoto(
 
 export async function getPhotosForSession(
   sessionId: string,
+  databaseName = DATABASE_NAME,
 ): Promise<PersistedPhotoRecord[]> {
   return withPhotoStore('readonly', async (store) => {
     const index = store.index(SESSION_INDEX_NAME)
     return requestToPromise<PersistedPhotoRecord[]>(
       index.getAll(IDBKeyRange.only(sessionId)),
     )
-  })
+  }, databaseName)
 }
 
 export async function deletePhoto(key: string): Promise<void> {
@@ -201,7 +203,7 @@ export async function deletePhoto(key: string): Promise<void> {
   })
 }
 
-export async function deletePhotosForSession(sessionId: string): Promise<void> {
+export async function deletePhotosForSession(sessionId: string, databaseName = DATABASE_NAME): Promise<void> {
   await withPhotoStore('readwrite', async (store) => {
     const index = store.index(SESSION_INDEX_NAME)
 
@@ -224,7 +226,7 @@ export async function deletePhotosForSession(sessionId: string): Promise<void> {
         cursor.continue()
       }
     })
-  })
+  }, databaseName)
 }
 
 export async function clearAllPhotos(): Promise<void> {

@@ -57,7 +57,7 @@ type ManifestPreviewMode = 'json' | 'csv'
 type StatusTone = 'idle' | 'loading' | 'running' | 'warning' | 'error'
 
 const appElement = document.querySelector<HTMLDivElement>('#app')
-const APP_BUILD_LABEL = 'box-label-capture-mvp larger-preview-20261020'
+const APP_BUILD_LABEL = 'box-label-capture-mvp speed-comparison-20261117'
 
 if (!appElement) {
   throw new Error('앱 루트 요소를 찾을 수 없습니다.')
@@ -207,6 +207,7 @@ function renderDiagnosticsPanel(): string {
   return `
     <details class="diagnostics-panel">
       <summary>진단 정보</summary>
+      <p><a href="?benchmark=1">촬영 속도 비교 시험</a></p>
       <dl>
         <div>
           <dt>앱 빌드</dt>

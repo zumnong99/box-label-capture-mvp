@@ -102,6 +102,7 @@ export async function collectExportSummary(
 export async function buildSessionZip(
   session: SessionState,
   onProgress?: ExportProgressCallback,
+  databaseName?: string,
 ): Promise<ExportResult> {
   onProgress?.({
     phase: 'collecting',
@@ -109,7 +110,7 @@ export async function buildSessionZip(
     message: 'IndexedDB에서 사진을 불러오는 중입니다.',
   })
 
-  const photos = sortPhotos(await getPhotosForSession(session.sessionId))
+  const photos = sortPhotos(await getPhotosForSession(session.sessionId, databaseName))
   const exportedAtDate = new Date()
   const summary = buildExportSummary(session, photos, exportedAtDate)
   const exportedAt = exportedAtDate.toISOString()

@@ -1116,3 +1116,17 @@ p {
     position: static;
   }
 }
+
+.benchmark-shell { width: min(100% - 24px, 900px); margin: 24px auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.benchmark-shell h1, .benchmark-shell h2, .benchmark-shell h3, .benchmark-shell p { margin: 0; }
+.benchmark-shell p { line-height: 1.6; overflow-wrap: anywhere; }
+.benchmark-card { padding: 18px; border-radius: 16px; background: white; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
+.benchmark-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.benchmark-video, .benchmark-preview { max-height: 280px; max-width: 100%; border-radius: 8px; object-fit: contain; background: #111827; }
+.benchmark-file { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.benchmark-file input { width: 100%; min-width: 0; }
+.benchmark-table-scroll { overflow-x: auto; margin: 14px 0; }
+.benchmark-table-scroll table { border-collapse: collapse; width: 100%; font-size: 14px; }
+.benchmark-table-scroll td, .benchmark-table-scroll th { padding: 10px; border-bottom: 1px solid #dce3ec; text-align: left; }
+.benchmark-table-scroll td { white-space: nowrap; }
+[data-results] { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }

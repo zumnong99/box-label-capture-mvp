@@ -53,10 +53,10 @@ function clampToRange(value: number, range?: MediaSettingsRange): number {
   return Math.min(maximum, Math.max(minimum, Math.round(stepped)))
 }
 
-async function captureProcessedStill(
+export async function captureCameraPhotoBlob(
   stream: MediaStream,
   maxLongEdge: number,
-): Promise<ImageBitmap | null> {
+): Promise<Blob | null> {
   const ImageCaptureClass = (
     globalThis as typeof globalThis & { ImageCapture?: ImageCaptureConstructor }
   ).ImageCapture
@@ -64,7 +64,6 @@ async function captureProcessedStill(
 
   if (
     !ImageCaptureClass ||
-    typeof createImageBitmap !== 'function' ||
     !track ||
     track.readyState !== 'live'
   ) {
@@ -100,10 +99,25 @@ async function captureProcessedStill(
       blob = await imageCapture.takePhoto()
     }
 
+    return blob
+  } catch (error) {
+    // 정지사진 촬영을 지원하지 않으면 영상 프레임을 사용한다.
+    console.warn('Processed still capture failed; using video frame', error)
+    return null
+  }
+}
+
+async function captureProcessedStill(
+  stream: MediaStream,
+  maxLongEdge: number,
+): Promise<ImageBitmap | null> {
+  if (typeof createImageBitmap !== 'function') return null
+  const blob = await captureCameraPhotoBlob(stream, maxLongEdge)
+  if (!blob) return null
+  try {
     return await createImageBitmap(blob, { imageOrientation: 'from-image' })
   } catch (error) {
-    // 정지사진 촬영/디코딩을 지원하지 않으면 영상 프레임을 사용한다.
-    console.warn('Processed still capture failed; using video frame', error)
+    console.warn('Still decoding failed; using video frame', error)
     return null
   }
 }
@@ -172,9 +186,25 @@ export async function captureCameraImage(
     throw new Error('카메라 연결이 끊겼습니다. 카메라를 다시 시작해 주세요.')
   }
   // 영상은 직접 canvas에 그려 createImageBitmap(video) 미지원 기기도 처리한다.
-  const originalWidth = frame?.width ?? videoElement.videoWidth
-  const originalHeight = frame?.height ?? videoElement.videoHeight
+  try {
+    return await encodeCameraFrame(
+      frame ?? videoElement,
+      frame?.width ?? videoElement.videoWidth,
+      frame?.height ?? videoElement.videoHeight,
+      options,
+    )
+  } finally {
+    frame?.close()
+  }
+}
 
+// Normal capture and the comparison experiment use exactly the same encoder.
+export async function encodeCameraFrame(
+  source: CanvasImageSource,
+  originalWidth: number,
+  originalHeight: number,
+  options: CaptureOptions = DEFAULT_CAPTURE_OPTIONS,
+): Promise<CapturedImage> {
   const { width, height } = resizeDimensions(
     originalWidth,
     originalHeight,
@@ -193,7 +223,7 @@ export async function captureCameraImage(
 
     context.imageSmoothingEnabled = true
     context.imageSmoothingQuality = 'high'
-    context.drawImage(frame ?? videoElement, 0, 0, width, height)
+    context.drawImage(source, 0, 0, width, height)
 
     const blob = await canvasToJpegBlob(canvas, options.jpegQuality)
     const objectUrl = createObjectUrl(blob)
@@ -210,7 +240,6 @@ export async function captureCameraImage(
       capturedAt: new Date().toISOString(),
     }
   } finally {
-    frame?.close()
     canvas.width = 0
     canvas.height = 0
   }
